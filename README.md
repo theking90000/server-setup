@@ -10,5 +10,5 @@ Clé ssh installée dans l'utilisateur debian. (/home/debian/.ssh/authorized_key
 Infection via Ansible : (changer inventory.ini avec l'IP du serveur cible)
 
 ```
-cd infra && ansible-playbook -i  inventory.ini infra/infect.yml
+cd infection && ansible-playbook -i  inventory.ini infra/infect.yml
 ```
