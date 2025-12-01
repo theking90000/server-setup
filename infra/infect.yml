@@ -1,0 +1,86 @@
+---
+- name: Operation "Patient Zero" - Infection NixOS
+  hosts: vps_ovh # Le nom de votre groupe dans inventory.ini
+  become: yes # Il faut être root (ou sudo)
+  gather_facts: yes # On a besoin de savoir quel est l'OS actuel
+
+  vars:
+    # Choisissez une version stable. Unstable c'est pour les guerriers.
+    target_channel: "nixos-25.11"
+
+  tasks:
+    # 1. Sécurité : On vérifie si on est déjà sous NixOS
+    - name: Vérifier si NixOS est déjà là
+      ansible.builtin.stat:
+        path: /etc/nixos
+      register: nixos_dir
+
+    - name: ABORT MISSION - Le serveur est déjà sous NixOS !
+      ansible.builtin.fail:
+        msg: "Ce serveur semble déjà tourner sous NixOS. Je ne lance pas l'infection."
+      when: nixos_dir.stat.exists
+
+    # 2. Préparation
+    - name: Installer curl (juste au cas où)
+      ansible.builtin.package:
+        name: curl
+        state: present
+      when: ansible_distribution != 'NixOS'
+
+    - name: Démonter /tmp si monté
+      ansible.builtin.shell: |
+        if mountpoint -q /tmp; then
+          umount /tmp
+        fi
+      args:
+        warn: false
+      ignore_errors: true
+
+    - name: Copier les clés SSH de l'utilisateur dans /root/.ssh/authorized_keys
+      ansible.builtin.copy:
+        src: "/home/{{ ansible_user_id }}/.ssh/authorized_keys"
+        dest: /root/.ssh/authorized_keys
+        owner: root
+        group: root
+        mode: "0600"
+      when: ansible_user_id != 'root'
+
+    # 3. L'Infection
+    # On utilise async + poll: 0 car le script va couper la connexion SSH en rebootant.
+    # Ansible ne doit pas attendre la réponse, sinon il va tomber en timeout erreur.
+    - name: INJECTION DU VIRUS (Lancement de nixos-infect)
+      ansible.builtin.shell: |
+        curl https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect | NIX_CHANNEL={{ target_channel }} bash
+      async: 600 # On laisse tourner le script max 10 minutes en arrière-plan
+      poll: 0 # On n'attend PAS la fin (Fire and Forget)
+      ignore_errors: true # On ignore l'erreur de déconnexion SSH inévitable
+
+    # 4. L'Attente
+    - name: Attendre que le serveur se fasse tuer (Port 22 down)
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 22
+        state: stopped
+        timeout: 120
+      delegate_to: localhost # C'est votre PC qui surveille, pas le serveur
+
+    - name: Attendre la résurrection (Port 22 up)
+      ansible.builtin.wait_for:
+        host: "{{ ansible_host }}"
+        port: 22
+        state: started
+        delay: 30 # On attend 30s avant de commencer à checker
+        timeout: 600
+      delegate_to: localhost
+
+    # 5. Vérification
+    # Attention : À ce stade, Python n'est probablement pas installé sur le NixOS tout neuf.
+    # On utilise le module 'raw' qui n'a pas besoin de Python.
+    - name: Vérifier la réussite de l'opération
+      raw: grep PRETTY_NAME /etc/os-release
+      register: os_check
+      changed_when: false
+
+    - name: Afficher le nouvel OS
+      ansible.builtin.debug:
+        msg: "Le serveur est maintenant : {{ os_check.stdout_lines | select('search', 'PRETTY_NAME') | list }}"
