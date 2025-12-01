@@ -1,0 +1,17 @@
+---
+- name: Configuration NixOS
+  hosts: vps_ovh
+  become: yes
+
+  tasks:
+    - name: Copier le contenu du dossier nixos dans /etc/nixos
+      copy:
+        src: ./nixos/
+        dest: /etc/nixos/
+        owner: root
+        group: root
+        mode: 0644
+        remote_src: no
+
+    - name: Reconstruire NixOS
+      command: nixos-rebuild switch
