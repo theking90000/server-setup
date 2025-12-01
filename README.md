@@ -27,5 +27,28 @@ ansible_keys:
 ```
 
 ```
-cd setup && ansible-playbook -i  inventory.ini infra/setup.yml
+cd setup && ansible-playbook -i inventory.ini infra/setup.yml
+```
+
+## Appliquer les configs NixOS
+
+Aller dans `config`
+
+configurer `inventory.ini`
+
+```
+[vps_ovh]
+vps1 ansible_host=X.X.X.X vpn_ip=10.100.0.1
+```
+
+Générer les clés wireguard en local
+
+```
+ansible-playbook -i inventory.ini wireguard-keygen.yml
+```
+
+Uploader et regénérer les configs
+
+```
+ansible-playbook -i inventory.ini config.yml
 ```
