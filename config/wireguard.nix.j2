@@ -1,0 +1,41 @@
+{ config, pkgs, ... }:
+
+{
+  # 1. On ouvre le port UDP (Vital !)
+  networking.firewall.allowedUDPPorts = [ 51820 ];
+
+  # 2. Configuration de l'interface wg0
+  networking.wireguard.interfaces.wg0 = {
+    # L'IP de CE serveur dans le VPN
+    ips = [ "{{ vpn_ip }}/24" ];
+    
+    # Le port d'écoute
+    listenPort = 51820;
+
+    # La clé privée de CE serveur (lue depuis le fichier local sur votre PC via Ansible)
+    privateKey = "{{ my_private_key }}";
+
+    # 3. La liste des copains (Peers)
+    peers = [
+      {% for host in groups['vps_ovh'] %}
+      # On ne s'ajoute pas soi-même comme peer, c'est schizophrène
+      {% if host != inventory_hostname %}
+      {
+        # La clé publique du copain (récupérée par Ansible)
+        publicKey = "{{ hostvars[host]['wireguard_public_key'] }}";
+        
+        # Les IPs qu'on autorise à venir de ce tunnel (l'IP VPN du copain)
+        allowedIPs = [ "{{ hostvars[host]['vpn_ip'] }}/32" ];
+        
+        # L'adresse réelle (Publique) pour le joindre
+        # Ansible connaît l'IP publique grâce à 'ansible_host'
+        endpoint = "{{ hostvars[host]['ansible_host'] }}:51820";
+
+        # Keepalive pour garder le tunnel ouvert à travers les NAT
+        persistentKeepalive = 25;
+      }
+      {% endif %}
+      {% endfor %}
+    ];
+  };
+}
