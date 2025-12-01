@@ -1,0 +1,41 @@
+{ config, pkgs, ... }:
+
+{
+  imports = [ 
+    ./hardware-configuration.nix 
+    ./loader.nix
+  ];
+
+  environment.systemPackages = with pkgs; [
+    python3
+    git
+    vim
+  ];
+
+  security.sudo.enable = true;
+
+  security.sudo.wheelNeedsPassword = false;
+
+  # 3. On s'assure que l'user ansible est bien dans le groupe "wheel"
+  users.users.ansible = {
+    isNormalUser = true;
+    extraGroups = [ "wheel" ]; 
+    openssh.authorizedKeys.keys = [ 
+        {% for key in ansible_keys %}
+        "{{ key }}"
+        {% endfor %}
+     ];
+  };
+
+   boot.tmp.cleanOnBoot = true;
+  zramSwap.enable = true;
+  networking.hostName = "{{ hostname }}";
+  networking.domain = "vps.ovh.net";
+  services.openssh.enable = true;
+  users.users.root.openssh.authorizedKeys.keys = [ 
+    {% for key in admin_keys %}
+    "{{ key }}"
+    {% endfor %}
+  ];
+  system.stateVersion = "23.11";  
+}

@@ -12,3 +12,20 @@ Infection via Ansible : (changer inventory.ini avec l'IP du serveur cible)
 ```
 cd infection && ansible-playbook -i  inventory.ini infra/infect.yml
 ```
+
+## Configuer les serveurs
+
+Configurer group_vars/all.yml et inventory.ini
+
+```
+# group_vars/all.yml
+admin_keys:
+  - "ssh-ed25519 AAA"
+
+ansible_keys:
+  - "ssh-ed25519 AAA"
+```
+
+```
+cd setup && ansible-playbook -i  inventory.ini infra/setup.yml
+```
