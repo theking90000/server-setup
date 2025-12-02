@@ -7,5 +7,16 @@
 
 - name: "Phase 3 : Synchro NixOS"
   synchronize:
-    src: "../nixos/modules/" # Là on doit sortir du rôle car le dossier nixos est à la racine
+    src: "../nixos/{{ item }}" # Là on doit sortir du rôle car le dossier nixos est à la racine
     dest: "/etc/nixos/"
+  loop:
+    - modules/
+    - profiles
+
+- name: "Sync: Pousser la config spécifique du host"
+  synchronize:
+    src: "../nixos/hosts/{{ inventory_hostname }}/"
+    dest: "/etc/nixos/"
+    # Optionnel : exclure le hardware-config si vous ne l'avez pas commité
+    # rsync_opts:
+    #   - "--exclude=hardware-configuration.nix"
