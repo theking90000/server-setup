@@ -42,6 +42,13 @@ ansible-playbook playbooks/11-wireguard-keygen.yml
 
 ## 4. Appliquer les configurations NixOS !
 
+Configurer les secrets serveurs dans `inventory/host_vars/<hostname>/secrets.yml`.
+
+```yaml
+server_secrets:
+  grafana-admin-password: "votre_mot_de_passe_securise"
+```
+
 Le contenu du dossier `nixos/modules` sera appliqué aux serveurs.
 Le fichier `loader.nix` est le point d'entrée de la configuration NixOS. Le VPN Wireguard est automatiquement configuré entre les serveurs.
 

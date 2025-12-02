@@ -24,13 +24,25 @@ in
   # 2. LA CONFIGURATION (L'IMPLÉMENTATION)
   # Ce bloc ne s'active QUE si enable = true
   config = lib.mkIf cfg.enable {
+
+    systemd.services.grafana.serviceConfig = {
+      # Syntaxe : "ID_DU_CREDENTIAL : CHEMIN_SOURCE"
+      LoadCredential = [ 
+        "admin_pwd:/var/lib/secrets/grafana-admin-password" 
+      ];
+    };
     
     services.grafana = {
       enable = true;
       settings.server.http_port = 3000;
       
-      # Utilisation du paramètre pour le mot de passe
-      settings.security.admin_password_file = cfg.adminPasswordFile;
+      # Grafana ne lit pas la source, il lit le "Passe-Plat"
+      # Le chemin standard est : /run/credentials/<nom_du_service>/<ID>
+      settings.security = {
+          admin_password = "$__file{/run/credentials/grafana.service/admin_pwd}";
+          
+          admin_user = "admin";
+        };
 
       provision.enable = true;
       provision.datasources.settings.datasources = [

@@ -1,3 +1,4 @@
 wireguard-*.yml
 hosts.ini
 group_vars/all.yml
+secrets.yml

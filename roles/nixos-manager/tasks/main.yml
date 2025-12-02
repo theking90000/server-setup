@@ -2,8 +2,8 @@
 #- name: "Phase 1 : Les Secrets"
 #  include_tasks: secrets.yml # Il va chercher tasks/secrets.yml
 
-- name: "Phase 2 : Wireguard"
-  include_tasks: wireguard.yml # Il va chercher tasks/wireguard.yml
+- name: "Phase 2 : Secrets et Wireguard"
+  include_tasks: secrets.yml # Il va chercher tasks/wireguard.yml
 
 - name: "Phase 3 : Synchro NixOS"
   synchronize:
