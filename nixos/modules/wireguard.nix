@@ -2,7 +2,7 @@
 
 let  
   # On importe la liste des copains générée par Ansible
-  wg = import ../wg-peers.nix;
+  wg = import ./wg-peers.nix;
 in
 {
   networking.firewall.allowedUDPPorts = [ 51820 ];
@@ -16,6 +16,6 @@ in
     # Ainsi, la clé ne se retrouve pas dans le /nix/store mondialement lisible.
     privateKeyFile = "/var/lib/secrets/wg-private";
 
-    peers = wg.peers;
+    peers = wg.wgPeers;
   };
 }

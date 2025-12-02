@@ -3,3 +3,10 @@
   become: true
   roles:
     - nixos-manager
+
+- name: Appliquer la configuration NixOS
+  hosts: all
+  become: true
+  tasks:
+    - name: Appliquer la configuration NixOS avec nixos-rebuild
+      ansible.builtin.command: nixos-rebuild switch
