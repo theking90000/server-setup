@@ -5,6 +5,7 @@
         ./wireguard.nix
         ./dns.nix
         ./monitoring.nix
+        ./backup.nix
 
         # Profiles activables
         ./profiles/grafana.nix

@@ -57,5 +57,8 @@ in
 
     # On ouvre le port (si on veut)
     networking.firewall.allowedTCPPorts = [ 3000 ];
+
+    # On ajoute le dossier Grafana aux backups
+    profile.backup.paths = [ "/var/lib/grafana" ];
   };
 }

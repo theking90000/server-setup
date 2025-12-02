@@ -47,6 +47,13 @@ Configurer les secrets serveurs dans `inventory/host_vars/<hostname>/secrets.yml
 ```yaml
 server_secrets:
   grafana-admin-password: "votre_mot_de_passe_securise"
+
+  restic-password: "votre_mot_de_passe_securise"
+  restic-repo-url: "s3:s3.amazonaws.com/mon-bucket-restic/mon-repo"
+  restic-s3-env: |
+    AWS_ACCESS_KEY_ID="votre_access_key_id"
+    AWS_SECRET_ACCESS_KEY="votre_secret_access_key"
+    AWS_DEFAULT_REGION="us-east-1"
 ```
 
 Le contenu du dossier `nixos/modules` sera appliqué aux serveurs.
