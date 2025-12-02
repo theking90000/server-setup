@@ -1,0 +1,22 @@
+- name: "Wireguard : S'assurer que le dossier secrets existe"
+  file:
+    path: /var/lib/secrets
+    state: directory
+    mode: "0700"
+
+- name: "Wireguard : Déposer la clé privée (Mode sécurisé)"
+  copy:
+    # On lit la clé locale et on la pousse dans un fichier root-only
+    content: "{{ wireguard_private_key }}"
+    dest: /var/lib/secrets/wg-private
+    owner: root
+    group: root
+    mode: "0400" # Très strict
+
+- name: "Wireguard : Générer la liste des peers"
+  template:
+    src: wg-peers.nix.j2
+    dest: /etc/nixos/wg-peers.nix
+    owner: root
+    group: root
+    mode: "0644" # Ce fichier contient des IPs et clés publiques, pas grave s'il est lu

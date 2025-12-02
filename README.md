@@ -2,53 +2,49 @@
 
 Ce dépot contient des scripts et des configurations pour automatiser la mise en place et la gestion de serveurs.
 
-## Infecter les serveurs avec NixOS
+Chaque serveur est une installation d'un VPS OVH sous Debian 11, la clé SSH est installée dans l'utilisateur debian.
 
-Setup testé : OVH VPS sous Debian 11.
-Clé ssh installée dans l'utilisateur debian. (/home/debian/.ssh/authorized_keys)
+## 1. Configurer l'inventaire
 
-Infection via Ansible : (changer inventory.ini avec l'IP du serveur cible)
-
-```
-cd infection && ansible-playbook -i  inventory.ini infra/infect.yml
-```
-
-## Configuer les serveurs
-
-Configurer group_vars/all.yml et inventory.ini
+Configurer `inventory/group_vars` et `inventory/hosts.ini` avec les informations des serveurs.
 
 ```
-# group_vars/all.yml
+# inventory/hosts.ini
+[vps]
+vps1 ansible_host=51.X.X.X ansible_user=root hostname=vps-ddXXXXXX vpn_ip=10.0.0.1
+```
+
+```
+# inventory/group_vars/all.yml
 admin_keys:
-  - "ssh-ed25519 AAA"
-
+  - "ssh-ed25519 AAAA"
 ansible_keys:
-  - "ssh-ed25519 AAA"
+  - "ssh-ed25519 AAAA"
 ```
 
-```
-cd setup && ansible-playbook -i inventory.ini infra/setup.yml
-```
+## 2. Infecter les serveurs avec NixOS
 
-## Appliquer les configs NixOS
-
-Aller dans `config`
-
-configurer `inventory.ini`
-
-```
-[vps_ovh]
-vps1 ansible_host=X.X.X.X vpn_ip=10.100.0.1
+```sh
+ansible-playbook playbooks/00-infect.yml
 ```
 
-Générer les clés wireguard en local
+## 3. Configurer NixOS (bootstrap)
 
-```
-ansible-playbook -i inventory.ini wireguard-keygen.yml
+```sh
+ansible-playbook playbooks/10-bootstrap.yml
 ```
 
-Uploader et regénérer les configs
+Générer des clés Wireguard pour chaque serveur.
 
+```sh
+ansible-playbook playbooks/11-wireguard-keygen.yml
 ```
-ansible-playbook -i inventory.ini config.yml
+
+## 4. Appliquer les configurations NixOS !
+
+Le contenu du dossier `nixos/modules` sera appliqué aux serveurs.
+Le fichier `loader.nix` est le point d'entrée de la configuration NixOS. Le VPN Wireguard est automatiquement configuré entre les serveurs.
+
+```sh
+ansible-playbook playbooks/02-deploy.yml
 ```

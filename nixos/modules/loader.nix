@@ -2,7 +2,7 @@
 
 {
     imports = [
-        ./users.nix
+        ./wireguard.nix
         ./monitoring.nix
     ];
 
