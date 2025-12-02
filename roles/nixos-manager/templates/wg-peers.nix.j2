@@ -17,4 +17,11 @@
         {% endfor %}
     ];
 
+    ips = {
+        {% for host in groups['vps'] %}
+        # Syntaxe : "nom_machine" = "IP";
+        "{{ host }}" = "{{ hostvars[host]['vpn_ip'] }}";
+        {% endfor %}
+    };
+
 }
