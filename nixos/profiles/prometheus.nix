@@ -14,6 +14,12 @@ in
   # 1. DÉCLARATION DES PARAMÈTRES (L'API)
   options.profile.prometheus = {
     enable = lib.mkEnableOption "Activer Prometheus sur ce serveur";
+
+    listenAddress = lib.mkOption {
+      type = lib.types.str;
+      default = wg.wgIp;
+      description = "L'IP sur laquelle Prometheus écoutera.";
+    };
   };
 
   config = lib.mkIf cfg.enable {
@@ -21,8 +27,9 @@ in
     services.prometheus = {
       enable = true;
       port = 9090;
+      listenAddress = cfg.listenAddress;
 
-      retention = "15d";
+      retentionTime = "15d";
 
       scrapeConfigs = [
         {
