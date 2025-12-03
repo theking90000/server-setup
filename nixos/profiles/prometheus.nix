@@ -1,9 +1,12 @@
-{ config, pkgs, lib, ... }:
+{
+  config,
+  pkgs,
+  lib,
+  ...
+}:
 
 let
   wg = import ../wg-peers.nix;
-
-  nodeTargets = lib.mapAttrsToList (name: _: "${name}:9100") wg.ips;
 
   cfg = config.profile.prometheus;
 in
@@ -14,28 +17,41 @@ in
   };
 
   config = lib.mkIf cfg.enable {
-    
-    services.prometheus =  {
+
+    services.prometheus = {
       enable = true;
       port = 9090;
+
+      retention = "15d";
 
       scrapeConfigs = [
         {
           job_name = "node-mesh";
           scrape_interval = "15s";
-          
+
           # C'est ici qu'on injecte la liste générée
-          static_configs = [
+          static_configs = lib.mapAttrsToList (name: _: {
+            targets = [ "${name}:9100" ];
+            labels = {
+              host = name;
+            };
+          }) wg.ips;
+
+          relabel_configs = [
             {
-              targets = nodeTargets;
-              
-              # Bonus : Ajouter des labels pour faire joli dans Grafana
-              #labels = {
-              #  env = "production";
-              #  region = "ovh-europe";
-              #};
+              source_labels = [ "__address__" ];
+              regex = "(.+):9100";
+              target_label = "instance";
+              replacement = "$1";
             }
           ];
+
+          # Bonus : Ajouter des labels pour faire joli dans Grafana
+          #labels = {
+          #  env = "production";
+          #  region = "ovh-europe";
+          #};
+
         }
       ];
     };
