@@ -25,10 +25,7 @@
       when: ansible_distribution != 'NixOS'
 
     - name: Démonter /tmp si monté
-      ansible.builtin.shell: |
-        if mountpoint -q /tmp; then
-          umount /tmp
-        fi
+      raw: unmount /tmp || true
       args:
         warn: false
       ignore_errors: true

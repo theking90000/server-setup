@@ -8,7 +8,7 @@
         {
             # Copain : {{ host }}
             # On va chercher la clé publique dans votre dossier local "keys/"
-            publicKey = "{{ lookup('file', 'keys/' + host + '/public') }}";
+            publicKey = "{{ hostvars[host]['wireguard_public_key'] }}";
             allowedIPs = [ "{{ hostvars[host]['vpn_ip'] }}/32" ];
             endpoint = "{{ hostvars[host]['ansible_host'] }}:51820";
             persistentKeepalive = 25;
