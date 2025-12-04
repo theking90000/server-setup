@@ -11,4 +11,15 @@
 
   # Docker-Registry sur le VPS1
   profile.dockerRegistry.enable = true;
+
+  profile.certs = {
+    email = "martin.cogh@gmail.com";
+    issueDomains = [
+      {
+        domain = "vps1.theking90000.be";
+        dnsProvider = "ovh";
+        credentialsFile = "/var/lib/secrets/ovh-dns";
+      }
+    ];
+  };
 }
