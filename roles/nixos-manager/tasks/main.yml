@@ -7,11 +7,13 @@
 
 - name: "Phase 3 : Synchro NixOS"
   synchronize:
-    src: "../nixos/{{ item }}" # Là on doit sortir du rôle car le dossier nixos est à la racine
+    src: "../nixos/" # Là on doit sortir du rôle car le dossier nixos est à la racine
+    use_ssh_args: true
     dest: "/etc/nixos/"
-  loop:
-    - modules/
-    - profiles
+    rsync_opts:
+      - "--include=modules/***"
+      - "--include=profiles/***"
+      - "--exclude=*"
 
 - name: "Sync: Pousser la config spécifique du host"
   synchronize:
@@ -20,3 +22,6 @@
     # Optionnel : exclure le hardware-config si vous ne l'avez pas commité
     # rsync_opts:
     #   - "--exclude=hardware-configuration.nix"
+
+- name: Appliquer la configuration NixOS
+  ansible.builtin.command: nixos-rebuild switch

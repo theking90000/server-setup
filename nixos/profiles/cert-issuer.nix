@@ -69,7 +69,7 @@ in
 
       certs = lib.listToAttrs (
         map (certOpts: {
-          name = certOpts.domain;
+          name = lib.replaceStrings [ "*" ] [ "_" ] certOpts.domain;
           value = {
             dnsProvider = certOpts.dnsProvider;
             credentialsFile = certOpts.credentialsFile;
@@ -77,13 +77,18 @@ in
             # C'est l'utilisateur cert-syncer qui sera propriétaire des fichiers !
             group = "cert-syncer";
 
+            domain =
+              if (lib.hasPrefix "*." certOpts.domain) then
+                (lib.removePrefix "*." certOpts.domain)
+              else
+                certOpts.domain;
             # Logique wildcard
-            extraDomainNames = lib.optional (lib.hasPrefix "*." certOpts.domain) (
-              lib.removePrefix "*." certOpts.domain
-            );
+            extraDomainNames = lib.optional (lib.hasPrefix "*." certOpts.domain) (certOpts.domain);
           };
         }) cfg.issueDomains
       );
     };
+
+    profile.backup.paths = [ "/var/lib/acme" ];
   };
 }

@@ -33,6 +33,18 @@ in
       description = "Chemin vers le fichier contenant le mdp admin";
       default = "/var/lib/secrets/grafana-admin-password";
     };
+
+    expose = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "Nom de domaine à utiliser pour accéder à Grafana (via le reverse-proxy)";
+    };
+
+    rootUrl = lib.mkOption {
+      type = lib.types.str;
+      default = "%(protocol)s://%(domain)s:%(http_port)s/";
+      description = "URL racine à utiliser pour Grafana (via le reverse-proxy)";
+    };
   };
 
   # 2. LA CONFIGURATION (L'IMPLÉMENTATION)
@@ -50,6 +62,8 @@ in
       enable = true;
       settings.server.http_port = 3000;
       settings.server.http_addr = cfg.listenAddress;
+
+      settings.server.root_url = cfg.rootUrl;
 
       # Grafana ne lit pas la source, il lit le "Passe-Plat"
       # Le chemin standard est : /run/credentials/<nom_du_service>/<ID>
@@ -75,5 +89,8 @@ in
 
     # On ajoute le dossier Grafana aux backups
     profile.backup.paths = [ "/var/lib/grafana" ];
+
+    # Configuration du reverse-proxy (optionnel)
+
   };
 }

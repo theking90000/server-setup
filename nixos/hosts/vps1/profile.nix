@@ -6,6 +6,8 @@
   # Grafana sur le VPS1
   profile.grafana = {
     enable = true;
+    expose = "https://grafana.theking90000.be";
+
     prometheusHost = "vps1"; # <--- C'est ici que la magie opère
   };
 
@@ -16,7 +18,7 @@
     email = "martin.cogh@gmail.com";
     issueDomains = [
       {
-        domain = "vps1.theking90000.be";
+        domain = "*.theking90000.be";
         dnsProvider = "ovh";
         credentialsFile = "/var/lib/secrets/ovh-dns";
       }

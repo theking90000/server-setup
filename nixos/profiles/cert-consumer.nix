@@ -55,8 +55,8 @@ in
           echo "Syncing ${domain}..."
             rsync -avz --chmod=D750,F640 \
             -e "ssh -i $CREDENTIALS_DIRECTORY/ssh-key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null" \
-            cert-syncer@${cfg.masterIp}:${domain}/ \
-            /var/lib/acme/${domain}/
+            cert-syncer@${cfg.masterIp}:${lib.replaceStrings [ "*" ] [ "_" ] domain}/ \
+            /var/lib/acme/${lib.replaceStrings [ "*" ] [ "_" ] domain}/
         '') cfg.syncDomains}
 
         # TODO: Reload services if needed?

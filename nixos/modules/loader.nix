@@ -13,6 +13,7 @@
     ./profiles/docker-registry.nix
     ./profiles/cert-issuer.nix
     ./profiles/cert-consumer.nix
+    ./profiles/nginx.nix
 
     # Configuration du serveur (hosts/<hostname>/profile.nix)
     ./profile.nix
