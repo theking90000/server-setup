@@ -1,14 +1,20 @@
 { ... }:
 {
+  # Make this an ingress node
+  imports = [
+    ./profiles/ingress.nix
+  ];
+  profile.nginx.enable = true;
+
   # Prometheus sur le VPS1
   profile.prometheus.enable = true;
 
   # Grafana sur le VPS1
   profile.grafana = {
     enable = true;
-    expose = "https://grafana.theking90000.be";
+    rootUrl = "https://grafana.theking90000.be/";
 
-    prometheusHost = "vps1"; # <--- C'est ici que la magie opère
+    prometheusHost = "vps1";
   };
 
   # Docker-Registry sur le VPS1

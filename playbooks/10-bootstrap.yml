@@ -33,6 +33,9 @@
               "{{ key }}"
               {% endfor %}
             ];
+            ipv6 = "{{ ipv6 }}";
+            ipv6_gateway = "{{ ipv6_gateway }}";
+            vpn_ip = "{{ vpn_ip }}";
           }
 
     - name: Copier la configuration de bootstrap (Fichier STATIQUE, zéro Jinja)

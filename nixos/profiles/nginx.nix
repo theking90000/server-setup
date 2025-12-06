@@ -54,6 +54,22 @@ in
   # (par exemple via profile.grafana ou un vhost manuel)
   config = lib.mkIf cfg.enable {
 
+    # Ajout d'un vhost par défaut "poubelle"
+    services.nginx.virtualHosts."_" = {
+      # C'est lui le patron par défaut si aucun autre domaine ne correspond
+      default = true;
+
+      rejectSSL = true;
+
+      # On refuse explicitement HTTP/2 pour réduire la surface d'attaque sur ce vhost poubelle
+      http2 = false;
+
+      locations."/" = {
+        # "Tais-toi et raccroche"
+        return = "444";
+      };
+    };
+
     # 1. CONFIGURATION DE BASE (Les bonnes pratiques)
     services.nginx = {
       enable = true;
