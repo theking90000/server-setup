@@ -30,20 +30,30 @@ in
               default = name;
               description = "Nom du dossier du certificat (par défaut le wildcard)";
             };
+
+            blockMetrics = lib.mkEnableOption "Bloquer l'accès aux endpoints de métriques (ex: /metrics, /stats, etc.)";
           };
 
           # La logique : Si useHTTPS est true, on injecte la config SSL standard
-          config = lib.mkIf config.profile.useHTTPS {
-            forceSSL = true;
+          config = lib.mkMerge [
+            (lib.mkIf config.profile.useHTTPS {
+              forceSSL = true;
 
-            # La magie de l'injection automatique
-            sslCertificate = "/var/lib/acme/${
-              lib.replaceStrings [ "*" ] [ "_" ] config.profile.certName
-            }/fullchain.pem";
-            sslCertificateKey = "/var/lib/acme/${
-              lib.replaceStrings [ "*" ] [ "_" ] config.profile.certName
-            }/key.pem";
-          };
+              # La magie de l'injection automatique
+              sslCertificate = "/var/lib/acme/${
+                lib.replaceStrings [ "*" ] [ "_" ] config.profile.certName
+              }/fullchain.pem";
+              sslCertificateKey = "/var/lib/acme/${
+                lib.replaceStrings [ "*" ] [ "_" ] config.profile.certName
+              }/key.pem";
+            })
+
+            (lib.mkIf config.profile.blockMetrics {
+              locations."/metrics" = {
+                return = "403";
+              };
+            })
+          ];
 
         }
       )

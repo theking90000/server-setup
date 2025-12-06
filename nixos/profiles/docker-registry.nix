@@ -83,10 +83,26 @@ in
             path = "/run/docker-registry/auth/registry-auth";
           };
         };
+
+        http = {
+          debug = {
+            # On écoute sur le port 5001
+            addr = "${cfg.listenAddress}:5001";
+            prometheus = {
+              enabled = true;
+              path = "/metrics";
+            };
+          };
+        };
       };
     };
 
+    profile.backup.paths = [ "/var/lib/docker-registry" ];
+
     # Ouverture du port pour Docker-Registry (via VPN uniquement)
-    networking.firewall.interfaces.wg0.allowedTCPPorts = [ 5000 ];
+    networking.firewall.interfaces.wg0.allowedTCPPorts = [
+      5000
+      5001
+    ];
   };
 }

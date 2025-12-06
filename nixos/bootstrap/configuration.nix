@@ -16,6 +16,13 @@ in
     vim
   ];
 
+  boot.kernel.sysctl = {
+    # Autorise les services à se lier à une IP qui n'est pas (encore) locale
+    "net.ipv4.ip_nonlocal_bind" = 1;
+    # Si vous utilisez l'IPv6 pour le binding aussi
+    "net.ipv6.ip_nonlocal_bind" = 1;
+  };
+
   # Configuration SSH via les variables importées
   services.openssh.enable = true;
   users.users.root.openssh.authorizedKeys.keys = vars.adminKeys;
