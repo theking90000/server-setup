@@ -10,10 +10,18 @@ let
   # On récupère les noms des vhosts définis.
   # On vérifie s'il y en a plus de 0.
   cfg = config.profile.nginx;
+
+  wg = import ../wg-peers.nix;
 in
 {
   options.profile.nginx = {
     enable = lib.mkEnableOption "Activer la configuration Nginx de base";
+
+    monitorHosts = lib.mkOption {
+      type = lib.types.listOf lib.types.str;
+      default = [ ];
+      description = "Liste des hôtes à monitorer via l'exporter Nginx (Prometheus)";
+    };
   };
 
   options.services.nginx.virtualHosts = lib.mkOption {
@@ -62,79 +70,117 @@ in
 
   # On n'active ces réglages QUE si Nginx est activé quelque part ailleurs
   # (par exemple via profile.grafana ou un vhost manuel)
-  config = lib.mkIf cfg.enable {
+  config = lib.mkMerge [
+    (lib.mkIf cfg.enable {
 
-    # Ajout d'un vhost par défaut "poubelle"
-    services.nginx.virtualHosts."_" = {
-      # C'est lui le patron par défaut si aucun autre domaine ne correspond
-      default = true;
+      # Ajout d'un vhost par défaut "poubelle"
+      services.nginx.virtualHosts."_" = {
+        # C'est lui le patron par défaut si aucun autre domaine ne correspond
+        default = true;
 
-      rejectSSL = true;
+        rejectSSL = true;
 
-      # On refuse explicitement HTTP/2 pour réduire la surface d'attaque sur ce vhost poubelle
-      http2 = false;
+        # On refuse explicitement HTTP/2 pour réduire la surface d'attaque sur ce vhost poubelle
+        http2 = false;
 
-      locations."/" = {
-        # "Tais-toi et raccroche"
-        return = "444";
+        locations."/" = {
+          # "Tais-toi et raccroche"
+          return = "444";
+        };
       };
-    };
 
-    # 1. CONFIGURATION DE BASE (Les bonnes pratiques)
-    services.nginx = {
-      enable = true;
+      # 1. CONFIGURATION DE BASE (Les bonnes pratiques)
+      services.nginx = {
+        enable = true;
 
-      # Optimisations pour la performance
-      recommendedGzipSettings = true;
-      recommendedOptimisation = true;
-      recommendedProxySettings = true;
-      recommendedTlsSettings = true;
+        # Virtual Host Traffic Module
+        additionalModules = [ pkgs.nginxModules.vts ];
 
-      # Sécurité : On cache la version de Nginx
-      serverTokens = false;
+        # Optimisations pour la performance
+        recommendedGzipSettings = true;
+        recommendedOptimisation = true;
+        recommendedProxySettings = true;
+        recommendedTlsSettings = true;
 
-      # 2. MONITORING (Stub Status)
-      # On ajoute un serveur interne invisible de l'extérieur
-      # Il sert à exposer les métriques brutes
-      #   appendHttpConfig = ''
-      #     server {
-      #       listen 127.0.0.1:8080;
-      #       server_name localhost;
+        # Sécurité : On cache la version de Nginx
+        serverTokens = false;
 
-      #       location /stub_status {
-      #         stub_status on;
-      #         access_log off;
-      #         allow 127.0.0.1;
-      #         deny all;
-      #       }
-      #     }
-      #   '';
-    };
+        # 2. MONITORING (Stub Status)
+        # On ajoute un serveur interne invisible de l'extérieur
+        # Il sert à exposer les métriques brutes
+        appendHttpConfig = ''
+          vhost_traffic_status_zone;
 
-    networking.firewall.allowedTCPPorts = [
-      80
-      443
-    ];
+          # Optionnel : Si tu veux des stats par code de réponse (2xx, 3xx, 4xx, 5xx)
+          # vhost_traffic_status_filter_by_host on;
 
-    users.groups.acme = { };
-    users.groups.cert-syncer = { };
+          server {
+            listen ${wg.wgIp}:9113;
+            server_name stats.localhost;
 
-    users.users.nginx.extraGroups = [
-      "acme"
-      "cert-syncer"
-    ];
+            location /metrics {
+              vhost_traffic_status_display;
+              vhost_traffic_status_display_format prometheus;
+            }
+          }
+        '';
+      };
 
-    # # L'exporter Prometheus (qui lit le stub_status ci-dessus)
-    # services.prometheus.exporters.nginx = {
-    #   enable = true;
-    #   port = 9113; # Port par défaut
-    #   scrapeUri = "http://127.0.0.1:8080/stub_status";
-    #   # On s'assure que l'exporter ne sort pas sur internet
-    #   openFirewall = false;
-    # };
+      networking.firewall.allowedTCPPorts = [
+        80
+        443
+      ];
 
-    # On ouvre le port de monitoring UNIQUEMENT sur le VPN
-    # networking.firewall.interfaces.wg0.allowedTCPPorts = [ 9113 ];
+      users.groups.acme = { };
+      users.groups.cert-syncer = { };
 
-  };
+      users.users.nginx.extraGroups = [
+        "acme"
+        "cert-syncer"
+      ];
+
+      # # L'exporter Prometheus (qui lit le stub_status ci-dessus)
+      # services.prometheus.exporters.nginx = {
+      #   enable = true;
+      #   port = 9113; # Port par défaut
+      #   listenAddress = wg.wgIp;
+
+      #   scrapeUri = "http://127.0.0.1:8080/stub_status";
+      #   # On s'assure que l'exporter ne sort pas sur internet
+      #   openFirewall = false;
+      # };
+
+      # On ouvre le port de monitoring UNIQUEMENT sur le VPN
+      networking.firewall.interfaces.wg0.allowedTCPPorts = [ 9113 ];
+
+    })
+    (
+      # Si on a des hôtes à monitorer, on configure l'exporter en conséquence
+      lib.mkIf (cfg.monitorHosts != [ ]) {
+        services.prometheus.scrapeConfigs = [
+          {
+            job_name = "nginx";
+            scrape_interval = "15s";
+
+            static_configs = map (host: {
+              targets = [ "${host}:9113" ];
+              labels = {
+                host = host;
+              };
+            }) cfg.monitorHosts;
+
+            relabel_configs = [
+              {
+                source_labels = [ "__name__" ];
+
+                regex = "^(go_|process_).*";
+
+                action = "drop";
+              }
+            ];
+          }
+        ];
+      }
+    )
+  ];
 }

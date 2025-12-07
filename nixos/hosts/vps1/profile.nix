@@ -21,6 +21,11 @@
   # Par défault: metrics sur prometheus
   profile.dockerRegistry.enable = true;
 
+  profile.nginx.monitorHosts = [
+    "vps1"
+    "vps2"
+  ];
+
   profile.certs = {
     email = "martin.cogh@gmail.com";
     issueDomains = [
