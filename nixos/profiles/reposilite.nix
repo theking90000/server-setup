@@ -24,6 +24,24 @@ in
       default = wg.wgIp;
       description = "L'hostname ou l'IP utilisée par Prometheus pour scraper Reposilite.";
     };
+
+    expose = lib.mkOption {
+      type = lib.types.bool;
+      default = false;
+      description = "Exposer Reposilite sur le reverse-proxy (nginx)";
+    };
+
+    exposeHost = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "Nom de domaine à utiliser pour accéder à Reposilite (via le reverse-proxy)";
+    };
+
+    exposeCert = lib.mkOption {
+      type = lib.types.str;
+      default = "";
+      description = "Nom du certificat à utiliser pour exposer Reposilite (via le reverse-proxy)";
+    };
   };
 
   config = lib.mkMerge [
@@ -52,8 +70,7 @@ in
 
       # Ouverture du port pour Docker-Registry (via VPN uniquement)
       networking.firewall.interfaces.wg0.allowedTCPPorts = [
-        5000
-        5001
+        5002
       ];
     })
     ({
@@ -74,6 +91,29 @@ in
           };
         }
       ];
+    })
+    (lib.mkIf cfg.expose {
+      services.nginx.upstreams.reposilite.servers = {
+        "${cfg.reposiliteHost}:5002" = { };
+      };
+
+      services.nginx.virtualHosts."reposilite" = {
+        serverName = cfg.exposeHost;
+
+        profile.useHTTPS = true;
+        profile.certName = cfg.exposeCert;
+
+        extraConfig = ''
+          error_log /var/log/nginx/reposilite_error.log;
+          access_log /var/log/nginx/reposilite_access.log;
+        '';
+
+        profile.blockMetrics = true;
+
+        locations."/" = {
+          proxyPass = "http://reposilite";
+        };
+      };
     })
   ];
 }
