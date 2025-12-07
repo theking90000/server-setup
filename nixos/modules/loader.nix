@@ -6,6 +6,7 @@
     ./dns.nix
     ./monitoring.nix
     ./backup.nix
+    ./virtualisation.nix
 
     # Profiles activables
     ./profiles/grafana.nix

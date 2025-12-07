@@ -7,13 +7,11 @@
 
 - name: "Phase 3 : Synchro NixOS"
   synchronize:
-    src: "../nixos/" # Là on doit sortir du rôle car le dossier nixos est à la racine
-    use_ssh_args: true
+    src: "../nixos/{{ item }}" # Là on doit sortir du rôle car le dossier nixos est à la racine
     dest: "/etc/nixos/"
-    rsync_opts:
-      - "--include=modules/***"
-      - "--include=profiles/***"
-      - "--exclude=*"
+  loop:
+    - modules/
+    - profiles/
 
 - name: "Sync: Pousser la config spécifique du host"
   synchronize:
