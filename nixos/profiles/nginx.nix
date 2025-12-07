@@ -114,6 +114,8 @@ in
           # Optionnel : Si tu veux des stats par code de réponse (2xx, 3xx, 4xx, 5xx)
           # vhost_traffic_status_filter_by_host on;
 
+          vhost_traffic_status_histogram_buckets 0.005 0.01 0.05 0.1 0.5 1 5 10;
+
           server {
             listen ${wg.wgIp}:9113;
             server_name stats.localhost;
