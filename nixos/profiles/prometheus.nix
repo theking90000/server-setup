@@ -51,14 +51,14 @@ in
               target_label = "instance";
               replacement = "$1";
             }
+            {
+              source_labels = [ "__name__" ];
+
+              regex = "^(go_|process_).*";
+
+              action = "drop";
+            }
           ];
-
-          # Bonus : Ajouter des labels pour faire joli dans Grafana
-          #labels = {
-          #  env = "production";
-          #  region = "ovh-europe";
-          #};
-
         }
       ];
     };

@@ -18,6 +18,7 @@
   };
 
   # Docker-Registry sur le VPS1
+  # Par défault: metrics sur prometheus
   profile.dockerRegistry.enable = true;
 
   profile.certs = {
