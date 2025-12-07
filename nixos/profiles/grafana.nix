@@ -102,6 +102,16 @@ in
             url = "http://${cfg.prometheusHost}:9090";
           }
         ];
+
+        provision.dashboards.settings.providers = [
+          {
+            name = "Ansible Managed";
+            options.path = "/var/lib/config/grafana/dashboards";
+            # Permet de recharger les dashboards sans redémarrer Grafana
+            updateIntervalSeconds = 10;
+            options.foldersFromFilesStructure = true;
+          }
+        ];
       };
 
       # On ouvre le port (si on veut)
