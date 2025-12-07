@@ -21,6 +21,10 @@
   # Par défault: metrics sur prometheus
   profile.dockerRegistry.enable = true;
 
+  # Reposilite
+  profile.reposilite.enable = true;
+  profile.reposilite.reposiliteHost = "vps1";
+
   profile.nginx.monitorHosts = [
     "vps1"
     "vps2"

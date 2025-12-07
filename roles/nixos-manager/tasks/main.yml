@@ -5,13 +5,15 @@
 - name: "Phase 2 : Secrets et Wireguard"
   include_tasks: secrets.yml # Il va chercher tasks/wireguard.yml
 
-- name: "Phase 3 : Synchro NixOS"
+- name: "Phase 3 : Synchro NixOS (modules)"
   synchronize:
-    src: "../nixos/{{ item }}" # Là on doit sortir du rôle car le dossier nixos est à la racine
+    src: "../nixos/modules/" # Là on doit sortir du rôle car le dossier nixos est à la racine
     dest: "/etc/nixos/"
-  loop:
-    - modules/
-    - profiles/
+
+- name: "Phase 3 : Synchro NixOS (profiles)"
+  synchronize:
+    src: "../nixos/profiles/" # Là on doit sortir du rôle car le dossier nixos est à la racine
+    dest: "/etc/nixos/profiles/"
 
 - name: "Sync: Pousser la config spécifique du host"
   synchronize:
