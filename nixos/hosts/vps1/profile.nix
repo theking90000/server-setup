@@ -25,6 +25,9 @@
   profile.reposilite.enable = true;
   profile.reposilite.reposiliteHost = "vps1";
 
+  profile.gitea.enable = true;
+  profile.gitea.giteaHost = "vps1";
+
   profile.nginx.monitorHosts = [
     "vps1"
     "vps2"

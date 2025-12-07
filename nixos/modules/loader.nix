@@ -16,6 +16,7 @@
     ./profiles/cert-consumer.nix
     ./profiles/nginx.nix
     ./profiles/reposilite.nix
+    ./profiles/gitea.nix
 
     # Configuration du serveur (hosts/<hostname>/profile.nix)
     ./profile.nix

@@ -16,4 +16,12 @@
     exposeCert = "*.theking90000.be";
     reposiliteHost = "vps1";
   };
+
+  # Proxy Gitea depuis vps1
+  profile.gitea = {
+    expose = true;
+    exposeHost = "git.theking90000.be";
+    exposeCert = "*.theking90000.be";
+    giteaHost = "vps1";
+  };
 }
