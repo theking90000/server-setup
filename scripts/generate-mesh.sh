@@ -46,7 +46,8 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     # Génération des clés si absentes
     if [ ! -f "$PRIV_KEY" ]; then
         echo "🔑 Génération des clés pour $HOSTNAME..."
-        wg genkey | tee "$PRIV_KEY" | wg pubkey > "$PUB_KEY"
+        # wg genkey outputs a newline, which can cause issues in some contexts. Trimming it:
+        wg genkey | tr -d '\n' | tee "$PRIV_KEY" | wg pubkey | tr -d '\n' > "$PUB_KEY"
     fi
 
     PUB_CONTENT=$(cat "$PUB_KEY")

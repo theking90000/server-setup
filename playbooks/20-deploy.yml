@@ -1,6 +1,0 @@
-- name: Déployer la configuration NixOS
-  hosts: all
-  become: true
-  gather_facts: false
-  roles:
-    - nixos-manager
