@@ -15,6 +15,6 @@
   networking.firewall.allowedTCPPorts = [ 22 ];
 
   users.users.root.openssh.authorizedKeys.keys = [
-    (builtins.readFile (../.secrets + "/${name}/key.pub"))
+    (builtins.readFile (../../../.secrets + "/${name}/key.pub"))
   ];
 }

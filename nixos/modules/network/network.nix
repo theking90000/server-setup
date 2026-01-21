@@ -4,7 +4,7 @@
 # Les paramètres réseau sont personnalisés selon les données fournies.
 #
 
-{ name, data }:
+{ name, data, ... }:
 {
   networking = {
 

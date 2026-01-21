@@ -4,12 +4,12 @@
 }:
 
 let
-  wg = import ../.secrets/mesh.nix;
+  wg = import ../../../.secrets/mesh.nix;
 in
 {
   # Importer la clé
   deployment.keys."wg-key" = {
-    keyFile = ../.secrets/${name}/wireguard.private;
+    keyFile = ../../../.secrets/${name}/wireguard.private;
     destDir = "/var/lib/secrets";
     user = "root";
     group = "root";

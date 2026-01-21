@@ -1,0 +1,5 @@
+# Ignore all .nix files
+*.nix
+
+# Allow .example.nix files
+!*.example.nix

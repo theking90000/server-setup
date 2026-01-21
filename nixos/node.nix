@@ -4,7 +4,30 @@
 # Chaque nœud possède sa propre configuration, basée sur les paramètres passés.
 #
 
-{ name, data }:
+{
+  name,
+  data,
+}:
+
+{
+  lib,
+  pkgs,
+  config,
+  ...
+}:
+let
+  servicesMap = import ../inventory/services.nix;
+  topology = import ../inventory/topology.nix;
+
+  services = import ./lib/services.nix {
+    inherit lib;
+    nodes = topology.nodes;
+    services = servicesMap;
+    name = name;
+  };
+
+  ops = import ./lib/ops.nix { inherit lib; };
+in
 {
   nixpkgs.hostPlatform = "x86_64-linux";
   system.stateVersion = "23.11";
@@ -17,22 +40,26 @@
 
     # Construction de la configuration sur la cible
     buildOnTarget = true;
+
+    tags = servicesMap."${name}" or [ ];
+  };
+
+  # Injecter les arguments dans les tous les lambdas "importés"
+  _module.args = {
+    inherit
+      services
+      name
+      data
+      ops
+      ;
   };
 
   imports = [
     # Import de la configuration hardware générée par nixos-infect
     (../.secrets + "/${name}/hardware.nix")
 
-    # Configuration Réseau
-    (import ./network.nix { inherit name data; })
-
-    # Configuration SSH
-    (import ./ssh.nix { inherit name data; })
-
-    # Configuration Wireguard (réseau virtuel)
-    (import ./wireguard.nix { inherit name; })
-
-    #./.secrets/mesh.nix
+    # Discovery des modules
+    (./modules)
   ];
 
   boot.tmp.cleanOnBoot = true;
