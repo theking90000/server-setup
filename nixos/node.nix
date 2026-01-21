@@ -6,7 +6,7 @@
 
 { name, data }:
 {
-  nixpkgs.system = "x86_64-linux";
+  nixpkgs.hostPlatform = "x86_64-linux";
   system.stateVersion = "23.11";
 
   # Configuration Colmena pour le déploiement
@@ -28,6 +28,9 @@
 
     # Configuration SSH
     (import ./ssh.nix { inherit name data; })
+
+    # Configuration Wireguard (réseau virtuel)
+    (import ./wireguard.nix { inherit name; })
 
     #./.secrets/mesh.nix
   ];

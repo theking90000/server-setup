@@ -8,7 +8,9 @@
 { ... }:
 {
   meta = {
-    nixpkgs = <nixpkgs>;
+    nixpkgs = import <nixpkgs> {
+      system = "x86_64-linux";
+    };
   };
 }
 // (

@@ -26,8 +26,7 @@ JSON_DATA=$(nix-instantiate --eval --json --strict -E "import $TOPOLOGY_FILE" | 
 
 # Initialisation du fichier de sortie
 mkdir -p "$SECRETS_DIR"
-echo "{ lib, ... }:" > "$OUTPUT_NIX"
-echo "{" >> "$OUTPUT_NIX"
+echo "{" > "$OUTPUT_NIX"
 echo "  mesh = {" >> "$OUTPUT_NIX"
 
 # 2. Boucle sur les nœuds
