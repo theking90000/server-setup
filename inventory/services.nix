@@ -8,5 +8,7 @@
     "node-metrics"
     "prometheus"
     "grafana"
+    "acme-issuer"
+    "web-server"
   ];
 }
