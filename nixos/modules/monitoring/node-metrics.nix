@@ -1,5 +1,4 @@
 {
-  config,
   lib,
   services,
   ...
@@ -26,6 +25,10 @@ in
         extraFlags = [ "--collector.textfile.directory=/var/lib/node_exporter/textfile_collector" ];
       };
 
+      systemd.tmpfiles.rules = [
+        "d /var/lib/node_exporter/textfile_collector 0755 nobody nogroup"
+      ];
+
       infra.security.acls = [
         {
           port = 9100;
@@ -34,13 +37,13 @@ in
         }
       ];
     })
-    ({
-      infra.telemetry."node-metrics" = builtins.map (host: {
+    {
+      infra.telemetry."node-metrics" = map (host: {
         targets = [ "${host}:9100" ];
         labels = {
           host = host;
         };
       }) (services.getHostsByTag "node-metrics");
-    })
+    }
   ];
 }
