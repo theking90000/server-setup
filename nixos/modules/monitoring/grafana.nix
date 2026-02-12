@@ -49,20 +49,28 @@ in
             options.foldersFromFilesStructure = true;
           }
         ];
+
+        provision.datasources.settings.datasources = map (ip: {
+          name = "Prometheus";
+          type = "prometheus";
+
+          url = "http://${ip}:9090";
+        }) (services.getVpnIpsByTag "prometheus");
       };
 
       # On ajoute le dossier Grafana aux backups
       # profile.backup.paths = [ "/var/lib/grafana" ];
 
+    })
+    (lib.mkIf (cfg.url != null) {
       infra.security.acls = [
         {
           port = 3000;
-          allowedTags = [ "webserver" ];
+          allowedTags = [ "web-server" ];
           description = "Grafana Web Interface";
         }
       ];
-    })
-    (lib.mkIf (cfg.url != null) {
+
       infra.ingress."grafana" = {
         domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
         backend = map (ip: "${ip}:3000") (services.getVpnIpsByTag "grafana");
