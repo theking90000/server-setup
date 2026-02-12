@@ -9,8 +9,8 @@ Pré-requis:
 - Terminal bash
 - Utilitaires de base : curl, jq, ssh, ... (non-exhaustif)
 - Nix installé sur la machine en local
-- Colmena disponible dans l'environment
-- Un ou plusieurs hôte(s) distant(s) à configurer/gérer
+- [Colmena](https://github.com/zhaofengli/colmena) disponible dans l'environment (`nix-shell -p colmena` ou installé de manière permanente).
+- Un ou plusieurs hôte(s) distant(s) à configurer/gérer.
 
 ## 1. Déploiement
 
@@ -108,9 +108,6 @@ colmena apply --on vps2
 ```
 
 ### Liste des tags
-
-| a | b |
-| c | d |
 
 | Nom            | Description                                                                                                                                                                          |
 | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
