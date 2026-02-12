@@ -1,64 +1,62 @@
 # Server Setup
 
-Ce dépot contient des scripts et des configurations pour automatiser la mise en place et la gestion de serveurs.
+Ce dépot contient des scripts et des configurations pour automatiser la mise en place et la gestion de serveurs avec [NixOS](https://nixos.org) et [colmena](https://github.com/zhaofengli/colmena)
 
-Chaque serveur est une installation d'un VPS OVH sous Debian 11, la clé SSH est installée dans l'utilisateur debian.
+Pour le moment, le setup fonctionne sur des VPS OVH, chaque serveur est initialement provisionné avec Debian 11, avec une clé ssh autorisée dans l'utilisateur `debian`.
 
-## 1. Configurer l'inventaire
+## 1. Déploiement
 
-Configurer `inventory/group_vars` et `inventory/hosts.ini` avec les informations des serveurs.
-
-```
-# inventory/hosts.ini
-[vps]
-vps1 ansible_host=51.X.X.X ansible_user=root hostname=vps-ddXXXXXX vpn_ip=10.0.0.1
-```
-
-```
-# inventory/group_vars/all.yml
-admin_keys:
-  - "ssh-ed25519 AAAA"
-ansible_keys:
-  - "ssh-ed25519 AAAA"
-```
-
-## 2. Infecter les serveurs avec NixOS
+Pour déployer les serveurs, il faut tout d'abord infecter chaque serveur manuellement avec NixOS.
 
 ```sh
-ansible-playbook playbooks/00-infect.yml
+./scripts/infect.sh -i <clé-ssh> <user>@<ip>
 ```
 
-## 3. Configurer NixOS (bootstrap)
+Le script utilise la clé ssh pour se connecter au serveur, copie la clé publique dans l'utilisateur root et lance le script [nixos-infect](https://github.com/elitak/nixos-infect).
+
+Le serveur redémarrera sous NixOS l'utilisateur `root` sera accessible en ssh (port 22) avec la clé utilisé pour l'infection.
+
+## 2. Configuration de Colmena
+
+Il faut ensuite configurer la flotte colmena. Le script hive.nix est géré par `inventory/topolgy.nix` (renommer le fichier inventory/topology.example.nix).
+
+Il faut ajouter chaque hôte dans la config:
+
+```nix
+{
+  nodes = {
+    vps1 = {
+      publicIp = "1.2.3.4";
+      vpnIp = "10.100.0.1";
+      ipv6 = "0001:0002:XXX";
+      ipv6_gateway = "<a trouver dans le panel OVH>";
+
+      user = "root";
+      sshKey = "~/.ssh/id_ed25519"; # emplacement local
+    };
+}
+```
+
+Il faut ensuite executer les scripts `adopt-hardware.sh` afin de télécharger le fichier de configuration hardware généré par nixos-infect localement. Ce script télécharge, pour tout les serveurs déclarés dans topology.nix le fichier `/etc/nixos/hardware-configuration.nix` et le copie dans le répertoire local `.secrets/<host>`
 
 ```sh
-ansible-playbook playbooks/10-bootstrap.yml
+./scripts/adopt-hardware.sh
 ```
 
-Générer des clés Wireguard pour chaque serveur.
+Ensuite, le mesh wireguard doit être généré localement celui-ci génère, pour chaque serveur déclaré dans `topology.nix` une clée privée wireguard ainsi qu'un fichier local `.secrets/mesh.nix` contenant la topologie et les clés de chaque noeud.
 
 ```sh
-ansible-playbook playbooks/11-wireguard-keygen.yml
+./scripts/generate-mesh.sh
 ```
 
-## 4. Appliquer les configurations NixOS !
-
-Configurer les secrets serveurs dans `inventory/host_vars/<hostname>/secrets.yml`.
-
-```yaml
-server_secrets:
-  grafana-admin-password: "votre_mot_de_passe_securise"
-
-  restic-password: "votre_mot_de_passe_securise"
-  restic-repo-url: "s3:s3.amazonaws.com/mon-bucket-restic/mon-repo"
-  restic-s3-env: |
-    AWS_ACCESS_KEY_ID="votre_access_key_id"
-    AWS_SECRET_ACCESS_KEY="votre_secret_access_key"
-    AWS_DEFAULT_REGION="us-east-1"
-```
-
-Le contenu du dossier `nixos/modules` sera appliqué aux serveurs.
-Le fichier `loader.nix` est le point d'entrée de la configuration NixOS. Le VPN Wireguard est automatiquement configuré entre les serveurs.
+Ne pas oublier de télécharger la clé publique de chaque serveur localement (.secrets)
 
 ```sh
-ansible-playbook playbooks/02-deploy.yml
+./scripts/export-ssh-key.sh
+```
+
+Et finalement, générer une clé SSH pour l'utilisateur `cert-syncer`, utilisé pour répliquer les certificats TLS générés par ACME.
+
+```sh
+./scripts/generate-key.sh
 ```
