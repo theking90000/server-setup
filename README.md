@@ -116,7 +116,7 @@ colmena apply --on vps2
 | `grafana`      | Installe et configure Grafana pour visualiser les données collectées par Prometheus. (config: `config/grafana`)                                                                                              |
 | `acme-issuer`  | Désigne ce noeud comme responsable de la génération et du renouvellement des certificats SSL/TLS via ACME (Let's Encrypt). Configure ACME ainsi qu'un utilisateur ssh `cert-syncer`. (config: `config/acme`) |
 | `web-server`   | Configure un serveur web (Nginx) pour servir des applications. Ecoute sur le port publique 443                                                                                                               |
-| `backup`       | Active les scripts et services de sauvegarde automatique (via restic).                                                                                                                                       |
+| `backup`       | Active les scripts et services de sauvegarde automatique (via restic). (config: `config/restic`)                                                                                                             |
 
 Par défaut, seul le port 22 (ssh) est ouvert sur la machine, les autres ports peuvent être ouverts par d'autres tags.
 
@@ -124,4 +124,5 @@ La philosophie est d'exposer les applications sur le réseau VPN (wireguard) au 
 
 ### Configuration des applications
 
-Les applications
+Certaines applications supportent des configurations externes. Chaque configuration est stockée dans le dossier `config/`
+pour utiliser une app ou une configuration il faut renommer le fichier '.example.nix' correspondant en '.nix'. Les variables sensibles ne sont PAS stockés dans le /nix/store mais utilisent colmena pour être envoyées de manière sécurisées sur le serveur.
