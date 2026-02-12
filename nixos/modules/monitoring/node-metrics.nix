@@ -17,6 +17,13 @@ in
 
         openFirewall = false;
         listenAddress = services.getVpnIp;
+
+        enabledCollectors = [
+          "systemd"
+          "processes"
+          "textfile"
+        ];
+        extraFlags = [ "--collector.textfile.directory=/var/lib/node_exporter/textfile_collector" ];
       };
 
       infra.security.acls = [
