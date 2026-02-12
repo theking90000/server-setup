@@ -62,10 +62,11 @@ in
         }
       ];
     })
-    (
-      lib.mkIf cfg.url != null {
-        # Informer Webserver de l'existence de Grafana?
-      }
-    )
+    (lib.mkIf (cfg.url != null) {
+      infra.ingress."grafana" = {
+        domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
+        backend = map (ip: "${ip}:3000") (services.getVpnIpsByTag "grafana");
+      };
+    })
   ];
 }

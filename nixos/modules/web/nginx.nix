@@ -10,6 +10,8 @@ let
   cfg = config.profile.nginx;
 
   enabled = services.hasTag "web-server";
+
+  getVal = local: global: if local != null then local else global;
 in
 {
   config = lib.mkMerge [
@@ -76,6 +78,41 @@ in
           '';
         };
       };
+    })
+    (lib.mkIf enabled {
+
+      # Configuration de l'ingress puisqu'on a choisi NGINX comme reverse proxy
+      services.nginx.upstreams = lib.mapAttrs (name: site: {
+        servers = lib.genAttrs site.backend (addr: { });
+      }) config.infra.ingress;
+
+      infra.acme.domains = lib.flatten (
+        lib.mapAttrsToList (
+          name: site:
+          lib.optional (site.sslCertificate == null) {
+            domain = site.domain;
+          }
+        ) config.infra.ingress
+      );
+
+      services.nginx.virtualHosts = lib.mapAttrs (name: site: {
+        serverName = site.domain;
+
+        forceSSL = true;
+
+        useACMEHost = getVal site.sslCertificate site.domain;
+
+        locations."/" = {
+          # On proxy vers l'upstream qu'on a créé juste au-dessus
+          # Le nom de l'upstream est le nom de la clé (ex: "grafana")
+          proxyPass = "http://${name}";
+
+          # Les headers classiques pour ne pas casser les websockets
+          proxyWebsockets = true;
+        };
+
+      }) config.infra.ingress;
+
     })
     ({
       infra.telemetry."nginx" = builtins.map (host: {
