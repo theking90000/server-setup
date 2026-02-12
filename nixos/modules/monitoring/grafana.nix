@@ -1,5 +1,4 @@
 {
-  config,
   lib,
   services,
   ops,
@@ -58,7 +57,7 @@ in
         }) (services.getVpnIpsByTag "prometheus");
       };
 
-      infra.backup.paths = [ "/var/lib/grafana" ];
+      infra.backup.paths = [ "/var/lib/grafana/data" ];
 
     })
     (lib.mkIf (cfg.url != null) {
