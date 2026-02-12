@@ -2,6 +2,7 @@
   vps1 = [
     "node-metrics"
     "prometheus"
+    "backup"
   ];
 
   vps2 = [
@@ -10,5 +11,6 @@
     "grafana"
     "acme-issuer"
     "web-server"
+    "backup"
   ];
 }
