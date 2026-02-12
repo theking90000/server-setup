@@ -58,8 +58,7 @@ in
         }) (services.getVpnIpsByTag "prometheus");
       };
 
-      # On ajoute le dossier Grafana aux backups
-      # profile.backup.paths = [ "/var/lib/grafana" ];
+      infra.backup.paths = [ "/var/lib/grafana" ];
 
     })
     (lib.mkIf (cfg.url != null) {
