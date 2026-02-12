@@ -1,0 +1,11 @@
+{
+  "nix.serverSettings": {
+    "nixd": {
+      "options": {
+        "nixos": {
+          "expr": "(import ./.vscode/eval_nixd.nix).nodes.vps1.options"
+        }
+      }
+    }
+  }
+}
