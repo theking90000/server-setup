@@ -109,15 +109,19 @@ colmena apply --on vps2
 
 ### Liste des tags
 
-| Nom            | Description                                                                                                                                                                          |
-| :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `node-metrics` | Active l'exportation des métriques du noeud (CPU, RAM, Disque, etc.) via Prometheus Node Exporter.                                                                                   |
-| `prometheus`   | Déploie une instance Prometheus pour collecter et stocker les métriques provenant des autres noeuds (`node-metrics`).                                                                |
-| `grafana`      | Installe et configure Grafana pour visualiser les données collectées par Prometheus.                                                                                                 |
-| `acme-issuer`  | Désigne ce noeud comme responsable de la génération et du renouvellement des certificats SSL/TLS via ACME (Let's Encrypt). Configure ACME ainsi qu'un utilisateur ssh `cert-syncer`. |
-| `web-server`   | Configure un serveur web (Nginx) pour servir des applications. Ecoute sur le port publique 443                                                                                       |
-| `backup`       | Active les scripts et services de sauvegarde automatique (via restic).                                                                                                               |
+| Nom            | Description                                                                                                                                                                                                  |
+| :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `node-metrics` | Active l'exportation des métriques du noeud (CPU, RAM, Disque, etc.) via Prometheus Node Exporter.                                                                                                           |
+| `prometheus`   | Déploie une instance Prometheus pour collecter et stocker les métriques provenant des autres noeuds (`node-metrics`).                                                                                        |
+| `grafana`      | Installe et configure Grafana pour visualiser les données collectées par Prometheus. (config: `config/grafana`)                                                                                              |
+| `acme-issuer`  | Désigne ce noeud comme responsable de la génération et du renouvellement des certificats SSL/TLS via ACME (Let's Encrypt). Configure ACME ainsi qu'un utilisateur ssh `cert-syncer`. (config: `config/acme`) |
+| `web-server`   | Configure un serveur web (Nginx) pour servir des applications. Ecoute sur le port publique 443                                                                                                               |
+| `backup`       | Active les scripts et services de sauvegarde automatique (via restic).                                                                                                                                       |
 
 Par défaut, seul le port 22 (ssh) est ouvert sur la machine, les autres ports peuvent être ouverts par d'autres tags.
 
 La philosophie est d'exposer les applications sur le réseau VPN (wireguard) au lieu de bind sur le port publique. Chaque application (du moins pour l'HTTP) doit donc passer par le proxy unique nginx afin de sortir vers le monde extérieur.
+
+### Configuration des applications
+
+Les applications
