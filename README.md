@@ -126,3 +126,11 @@ La philosophie est d'exposer les applications sur le réseau VPN (wireguard) au 
 
 Certaines applications supportent des configurations externes. Chaque configuration est stockée dans le dossier `config/`
 pour utiliser une app ou une configuration il faut renommer le fichier '.example.nix' correspondant en '.nix'. Les variables sensibles ne sont PAS stockés dans le /nix/store mais utilisent colmena pour être envoyées de manière sécurisées sur le serveur.
+
+### Applications (tags)
+
+| Nom                            | Description                                                                                                |
+| :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
+| `applications/docker-registry` | Déploie un registre Docker pour stocker et gérer les images conteneurs. (config: `config/docker-registry`) |
+| `applications/reposilite`      | Installe un gestionnaire de dépôts Maven compatible pour héberger des artefacts Java.                      |
+| (config: `config/reposilite`)  |
