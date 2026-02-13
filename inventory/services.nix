@@ -15,5 +15,6 @@
 
     "applications/docker-registry"
     "applications/reposilite"
+    "applications/gitea"
   ];
 }
