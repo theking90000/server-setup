@@ -22,6 +22,12 @@ let
         description = "Certificat SSL à utiliser (optionnel, ACME est activé par défaut)";
       };
 
+      blockPaths = lib.mkOption {
+        type = types.listOf types.str;
+        default = [ ];
+        description = "Liste de chemins à bloquer (ex: ['/admin', '/metrics'])";
+      };
+
     };
   };
 

@@ -102,14 +102,30 @@ in
 
         useACMEHost = getVal site.sslCertificate site.domain;
 
-        locations."/" = {
-          # On proxy vers l'upstream qu'on a créé juste au-dessus
-          # Le nom de l'upstream est le nom de la clé (ex: "grafana")
-          proxyPass = "http://${name}";
+        locations = {
+          "/" = {
+            # On proxy vers l'upstream qu'on a créé juste au-dessus
+            # Le nom de l'upstream est le nom de la clé (ex: "grafana")
+            proxyPass = "http://${name}";
 
-          # Les headers classiques pour ne pas casser les websockets
-          proxyWebsockets = true;
-        };
+            # Les headers classiques pour ne pas casser les websockets
+            proxyWebsockets = true;
+          };
+        }
+        # Bloquer les chemins sensibles définis dans la configuration de l'ingress
+        //
+          lib.mapAttrs
+            (path: _: {
+              return = "403";
+            })
+            (
+              lib.listToAttrs (
+                map (p: {
+                  name = p;
+                  value = null;
+                }) site.blockPaths or [ ]
+              )
+            );
 
       }) config.infra.ingress;
 
