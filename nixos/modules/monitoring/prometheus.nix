@@ -54,6 +54,13 @@ in
               action = "drop";
             }
           ];
+
+          # We don't rely on auth as authentification, but rather on IP control.
+          basic_auth = {
+            username = "user";
+            password = "password";
+          };
+
         }) config.infra.telemetry;
       };
 
