@@ -7,8 +7,6 @@
 }:
 
 let
-  cfg = config.profile.nginx;
-
   enabled = services.hasTag "web-server";
 
   getVal = local: global: if local != null then local else global;
@@ -102,6 +100,11 @@ in
 
         useACMEHost = getVal site.sslCertificate site.domain;
 
+        extraConfig = ''
+          error_log /var/log/nginx/${name}_error.log;
+          access_log /var/log/nginx/${name}_access.log;
+        '';
+
         locations = {
           "/" = {
             # On proxy vers l'upstream qu'on a créé juste au-dessus
@@ -130,13 +133,15 @@ in
       }) config.infra.ingress;
 
     })
-    ({
-      infra.telemetry."nginx" = builtins.map (host: {
+    {
+
+      infra.telemetry."nginx" = map (host: {
         targets = [ "${host}:9113" ];
         labels = {
           host = host;
         };
       }) (services.getHostsByTag "web-server");
-    })
+
+    }
   ];
 }
