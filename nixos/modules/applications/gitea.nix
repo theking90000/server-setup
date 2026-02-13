@@ -23,7 +23,7 @@ in
 
         settings = {
           server = {
-            ROOT_URL = "https://${cfg.url}";
+            ROOT_URL = "${cfg.url}";
             HTTP_PORT = port;
             HTTP_ADDR = services.getVpnIp;
           };
