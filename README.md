@@ -129,8 +129,7 @@ pour utiliser une app ou une configuration il faut renommer le fichier '.example
 
 ### Applications (tags)
 
-| Nom                            | Description                                                                                                |
-| :----------------------------- | :--------------------------------------------------------------------------------------------------------- |
-| `applications/docker-registry` | Déploie un registre Docker pour stocker et gérer les images conteneurs. (config: `config/docker-registry`) |
-| `applications/reposilite`      | Installe un gestionnaire de dépôts Maven compatible pour héberger des artefacts Java.                      |
-| (config: `config/reposilite`)  |
+| Nom                            | Description                                                                                                         |
+| :----------------------------- | :------------------------------------------------------------------------------------------------------------------ |
+| `applications/docker-registry` | Déploie un registre Docker pour stocker et gérer les images conteneurs. (config: `config/docker-registry`)          |
+| `applications/reposilite`      | Installe un gestionnaire de dépôts Maven compatible pour héberger des artefacts Java. (config: `config/reposilite`) |
