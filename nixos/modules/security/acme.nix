@@ -140,8 +140,10 @@ in
         serviceConfig.Group = "acme";
         serviceConfig.LoadCredential = [ "ssh-key:/var/lib/secrets/syncer.key" ];
 
+        scriptArgs = "%i";
+
         script = ''
-          DOMAIN="${lib.replaceStrings [ "*" ] [ "_" ] "%i"}" # %i contains the instance name (domain)
+          DOMAIN="$1" # %i contains the instance name (domain)
           ISSUERS="${lib.concatStringsSep " " issuers}"
 
           # Ensure destination directory exists
@@ -170,12 +172,14 @@ in
           OnBootSec = "1m";
           OnCalendar = "02:00:00";
           Persistent = true;
-          RandomizedDelaySec = "10m";
+          # RandomizedDelaySec = "10m";
         };
       };
 
       # Activate the timer for each domain
-      systemd.targets.timers.wants = map (d: "sync-cert@${d.domain}.timer") cfg.domains;
+      systemd.targets.timers.wants = map (
+        d: "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.timer"
+      ) cfg.domains;
     })
   ];
 }
