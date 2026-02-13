@@ -12,5 +12,7 @@
     "acme-issuer"
     "web-server"
     "backup"
+
+    "applications/docker-registry"
   ];
 }
