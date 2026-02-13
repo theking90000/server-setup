@@ -26,6 +26,8 @@ in
         port = 5000;
         listenAddress = services.getVpnIp;
 
+        openFirewall = false;
+
         storagePath = "/var/lib/docker-registry";
 
         enableDelete = true;
@@ -68,7 +70,7 @@ in
       ];
 
     })
-    (lib.mkIf (cfg.url != null) {
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag "applications/docker-registry" != [ ]) {
 
       infra.ingress."docker-registry" = {
         domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
