@@ -38,17 +38,9 @@ in
         '';
       };
 
-      networking.firewall.allowedTCPPorts = [
-        80
-        443
-      ];
-
       users.users.nginx.extraGroups =
         lib.optional (builtins.hasAttr "acme" config.users.groups) "acme"
         ++ lib.optional (builtins.hasAttr "cert-syncer" config.users.groups) "cert-syncer";
-
-      # On ouvre le port de monitoring UNIQUEMENT sur le VPN
-      networking.firewall.interfaces.wg0.allowedTCPPorts = [ 9113 ];
 
       # Par défaut, on rejette toutes les connexions non gérées
       services.nginx.virtualHosts."_" = {
@@ -76,6 +68,21 @@ in
           '';
         };
       };
+
+      networking.firewall.allowedTCPPorts = [
+        80
+        443
+      ];
+
+      infra.security.acls = [
+        {
+          port = 9113;
+          allowedTags = [
+            "prometheus"
+          ];
+          description = "NGINX VTS Metrics";
+        }
+      ];
     })
     (lib.mkIf enabled {
 
@@ -98,7 +105,10 @@ in
 
         forceSSL = true;
 
-        useACMEHost = getVal site.sslCertificate site.domain;
+        # useACMEHost = getVal site.sslCertificate site.domain;
+        sslCertificate = "/var/lib/acme/${getVal site.sslCertificate site.domain}/fullchain.pem";
+        sslCertificateKey = "/var/lib/acme/${getVal site.sslCertificate site.domain}/key.pem";
+        sslTrustedCertificate = "/var/lib/acme/${getVal site.sslCertificate site.domain}/chain.pem";
 
         extraConfig = ''
           error_log /var/log/nginx/${name}_error.log;
