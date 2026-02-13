@@ -14,5 +14,6 @@
     "backup"
 
     "applications/docker-registry"
+    "applications/reposilite"
   ];
 }
