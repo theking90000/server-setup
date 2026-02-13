@@ -1,6 +1,5 @@
 {
   services,
-  ops,
   lib,
   pkgs,
   ...

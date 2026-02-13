@@ -7,6 +7,7 @@
 { name, data, ... }:
 {
   networking = {
+    hostName = name;
 
     # Utilisation de nftables pour la gestion des pare-feux
     nftables.enable = true;
