@@ -1,8 +1,9 @@
 {
   vps1 = [
     "node-metrics"
-    "prometheus"
     "backup"
+
+    "web-server"
   ];
 
   vps2 = [
