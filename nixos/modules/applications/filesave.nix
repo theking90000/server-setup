@@ -8,12 +8,18 @@
 let
   mon-paquet = pkgs.callPackage ../../pkgs/filesave/filesave-server.nix { };
 
-  tag = "filesave-server";
+  tag = "applications/filesave-server";
   dataDir = "/var/lib/filesave-server";
 
   port = 22551;
 
   enabled = services.hasTag tag;
+
+  cfg =
+    if builtins.pathExists ../../../config/filesave/filesave.nix then
+      import ../../../config/filesave/filesave.nix
+    else
+      { };
 in
 {
   config = lib.mkMerge [
@@ -56,11 +62,25 @@ in
           NoNewPrivileges = true;
         };
       };
+
+      infra.security.acls = [
+        {
+          port = port;
+          allowedTags = [ "web-server" ];
+          description = "Filesave Server";
+        }
+      ];
+
     })
 
-    {
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
 
-    }
+      infra.ingress."filesave-server" = {
+        domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
+        backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
+      };
+
+    })
 
   ];
 }

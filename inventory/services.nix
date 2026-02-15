@@ -2,9 +2,9 @@
   vps1 = [
     "node-metrics"
     "backup"
-
     "web-server"
-    "filesave-server"
+
+    "applications/filesave-server"
   ];
 
   vps2 = [
