@@ -4,6 +4,7 @@
     "backup"
 
     "web-server"
+    "filesave-server"
   ];
 
   vps2 = [
