@@ -73,7 +73,7 @@ in
         group = "cert-syncer";
         # On revient à la méthode standard
         openssh.authorizedKeys.keys = [
-          ''command="${pkgs.rrsync}/bin/rrsync /var/lib/acme/",restrict ${publicSSHKey}''
+          ''command="${pkgs.rrsync}/bin/rrsync -ro /var/lib/acme/",restrict ${publicSSHKey}''
         ];
         #openssh.authorizedKeys.keys = [ "/var/lib/secrets/common-key.pub" ];
       };
@@ -105,6 +105,8 @@ in
               # C'est l'utilisateur cert-syncer qui sera propriétaire des fichiers !
               group = "cert-syncer";
 
+              reloadServices = lib.optional (lib.hasAttr "nginx" config.services) "nginx";
+
               domain =
                 if (lib.hasPrefix "*." certOpts.domain) then
                   (lib.removePrefix "*." certOpts.domain)
@@ -134,6 +136,8 @@ in
         path = [
           pkgs.rsync
           pkgs.openssh
+          pkgs.minica
+          pkgs.util-linux
         ];
         serviceConfig.Type = "oneshot";
         serviceConfig.User = "acme";
@@ -143,28 +147,90 @@ in
         scriptArgs = "%i";
 
         script = ''
-          DOMAIN="$1" # %i contains the instance name (domain)
+          DOMAIN="$1"
           ISSUERS="${lib.concatStringsSep " " issuers}"
 
-          # Ensure destination directory exists
+          # On définit une fonction pour faire le boulot
+          do_sync() {
+              # Ensure destination directory exists
+              mkdir -p "/var/lib/acme/$DOMAIN"
+
+              for IP in $ISSUERS; do
+                echo "Attempting to sync $DOMAIN from $IP..."
+                # J'ai ajouté -ro côté serveur dans l'explication, ici c'est le client
+                if rsync -avz --chmod=D750,F640 \
+                  -e "ssh -i $CREDENTIALS_DIRECTORY/ssh-key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10" \
+                  "cert-syncer@$IP:$DOMAIN/" \
+                  "/var/lib/acme/$DOMAIN/"; then
+                  echo "Successfully synced from $IP"
+                  return 0
+                else
+                  echo "Failed to sync from $IP"
+                fi
+              done
+              return 1
+          }
+
+          # --- LA MAGIE EST ICI ---
+          # On utilise un lock file global pour tous les services cert-syncer
+          LOCKFILE="/tmp/cert-syncer-global.lock"
+
+          # On utilise un descripteur de fichier (9) pour le lock
+          exec 9>"$LOCKFILE"
+
+          echo "Acquiring lock for $DOMAIN..."
+          # flock va attendre (bloquer) tant que le fichier est verrouillé par un autre processus
+          if flock 9; then
+              echo "Lock acquired. Starting sync for $DOMAIN."
+              
+              # On tente la synchro
+              if do_sync; then
+                  echo "Sync done."
+                  # Pas besoin d'unlock explicite, ça se fait à la fin du script/fermeture du FD
+                  exit 0
+              fi
+          else
+              echo "Failed to acquire lock!"
+              exit 1
+          fi
+
+          # Si on arrive ici, c'est que le rsync a échoué, on passe au fallback minica
+          # (Le lock est toujours actif ici, ce qui est bien pour pas surcharger le CPU si tout fail)
+
+          # Fall back to creating temporary self-signed certificates
+          echo "Creating temporary self-signed certificate for $DOMAIN using minica..."
           mkdir -p "/var/lib/acme/$DOMAIN"
 
-          for IP in $ISSUERS; do
-            echo "Attempting to sync $DOMAIN from $IP..."
-            if rsync -avz --chmod=D750,F640 \
-              -e "ssh -i $CREDENTIALS_DIRECTORY/ssh-key -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=10" \
-              "cert-syncer@$IP:$DOMAIN/" \
-              "/var/lib/acme/$DOMAIN/"; then
-              echo "Successfully synced from $IP"
-              exit 0
-            else
-              echo "Failed to sync from $IP"
-              fi
-            done
+          echo "Using minica at $(minica) to generate cert for $DOMAIN"
+
+          cd "/var/lib/acme/$DOMAIN"
+          if minica -domains "$DOMAIN" 2>/dev/null; then
+            echo "Temporary certificate created for $DOMAIN"
+            mv "$DOMAIN/cert.pem" "/var/lib/acme/$DOMAIN/cert.pem" 2>/dev/null || true
+            mv "$DOMAIN/key.pem" "/var/lib/acme/$DOMAIN/key.pem" 2>/dev/null || true
+            #chmod 640 "/var/lib/acme/$DOMAIN/cert.pem" "/var/lib/acme/$DOMAIN/key.pem"
+            #chown acme:acme "/var/lib/acme/$DOMAIN/"*
+            rm -rf "$DOMAIN" 2>/dev/null || true
+            echo "Temporary certificate created for $DOMAIN"
+            exit 0
+          fi
 
           echo "All sync attempts failed for $DOMAIN"
           exit 1
         '';
+      };
+
+      systemd.services."sync-cert-reload" = {
+        description = "Reload services after certificate sync";
+        serviceConfig.Type = "oneshot";
+        serviceConfig.User = "root";
+        script = ''
+          if systemctl is-active --quiet nginx; then
+            systemctl reload nginx
+          fi
+        '';
+        after = map (d: "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service") cfg.domains;
+        wantedBy = map (d: "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service") cfg.domains;
       };
 
       systemd.timers."sync-cert@" = {
@@ -180,6 +246,15 @@ in
       systemd.targets.timers.wants = map (
         d: "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.timer"
       ) cfg.domains;
+
+      systemd.services.nginx.wants = map (
+        d: "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service"
+      ) cfg.domains;
+
+      systemd.services.nginx.after = map (
+        d: "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service"
+      ) cfg.domains;
+
     })
   ];
 }
