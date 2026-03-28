@@ -71,6 +71,8 @@ in
         }
       ];
 
+      infra.backup.paths = [ dataDir ];
+
     })
 
     (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
