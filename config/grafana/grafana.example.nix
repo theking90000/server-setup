@@ -11,4 +11,8 @@
   # Pour le rendre accessible, il faudra tagger au moins un noeud avec le tag 'web-server'
   # Ce qui configurera automatiquement le reverse proxy Nginx ainsi que les certificats TLS via Let's Encrypt
   url = "https://grafana.example.com";
+
+  # Chaine de caractères aléatoires pour sécuriser les données
+  # de grafana (openssl rand -hex 32)
+  grafana_secret = "";
 }

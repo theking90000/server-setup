@@ -13,11 +13,15 @@ in
 
   config = lib.mkMerge [
     (lib.mkIf enabled {
-      deployment.keys = ops.mkSecretKeys "grafana" cfg [ "password" ];
+      deployment.keys = ops.mkSecretKeys "grafana" cfg [
+        "password"
+        "grafana_secret"
+      ];
 
       systemd.services.grafana.serviceConfig = {
         LoadCredential = [
           "admin_pwd:/var/lib/secrets/grafana/password"
+          "grafana_secret:/var/lib/secrets/grafana/grafana_secret"
         ];
       };
 
@@ -34,6 +38,7 @@ in
           security = {
             admin_password = "$__file{/run/credentials/grafana.service/admin_pwd}";
             admin_user = cfg.user;
+            secret_key = "$__file{/run/credentials/grafana.service/grafana_secret}";
           };
         };
 
