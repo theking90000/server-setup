@@ -5,6 +5,7 @@
     "web-server"
 
     "applications/filesave-server"
+    "applications/ntfy"
   ];
 
   vps2 = [
