@@ -7,7 +7,11 @@
   };
 
   outputs =
-    { self, nixpkgs, colmena }:
+    {
+      self,
+      nixpkgs,
+      colmena,
+    }:
     {
       nixosModules.default = {
         imports = [
@@ -33,37 +37,12 @@
             system:
             let
               pkgs = nixpkgs.legacyPackages.${system};
+              scripts = import ./scripts { inherit pkgs; };
             in
-            {
-              infect = pkgs.writeShellApplication {
-                name = "infect-server";
-                runtimeInputs = [
-                  pkgs.curl
-                  pkgs.openssh
-                ];
-                text = builtins.readFile ./scripts/infect.sh;
-              };
-              default = pkgs.writeShellApplication {
-                name = "infect-server";
-                runtimeInputs = [
-                  pkgs.curl
-                  pkgs.openssh
-                ];
-                text = builtins.readFile ./scripts/infect.sh;
-              };
+            scripts
+            // {
+              default = scripts.infect;
             }
           );
-
-      # (Optionnel) Tu peux aussi garder l'output Colmena direct ici TEMPORAIREMENT
-      # si tu veux tester les flakes sans encore créer le 2ème dépôt privé
-      # colmena = {
-      #   meta = { nixpkgs = import nixpkgs { system = "x86_64-linux"; }; };
-      # } // (
-      #   let
-      #     topo = import ./inventory/topology.nix;
-      #     generateNode = name: data: import ./nixos/node.nix { inherit name data; };
-      #   in
-      #   builtins.mapAttrs generateNode topo.nodes
-      # );
     };
 }
