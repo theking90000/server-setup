@@ -31,6 +31,10 @@ in
           metrics = {
             ENABLED = true;
           };
+
+          service = {
+            DISABLE_REGISTRATION = !cfg.registrationEnabled;
+          };
         };
       };
 
