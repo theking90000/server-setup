@@ -47,6 +47,7 @@ in
           port = port;
           allowedTags = [
             "web-server"
+            "prometheus"
           ];
           description = "NTFY";
         }
