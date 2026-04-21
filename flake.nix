@@ -3,6 +3,7 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-23.11";
+    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-23.11-darwin";
     colmena.url = "github:zhaofengli/colmena";
   };
 
@@ -10,6 +11,7 @@
     {
       self,
       nixpkgs,
+      nixpkgs-darwin,
       colmena,
     }:
     {
@@ -36,7 +38,8 @@
           (
             system:
             let
-              pkgs = nixpkgs.legacyPackages.${system};
+              isMac = nixpkgs.lib.hasSuffix "-darwin" system;
+              pkgs = if isMac then nixpkgs-darwin.legacyPackages.${system} else nixpkgs.legacyPackages.${system};
               scripts = import ./scripts { inherit pkgs; };
             in
             scripts

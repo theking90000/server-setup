@@ -6,7 +6,7 @@ DEFAULT_NIX_CHANNEL="nixos-25.11"
 KEYS_FILE="$HOME/.ssh/authorized_keys"
 DEFAULT_PUB_KEY="$HOME/.ssh/id_ed25519.pub"
 SSH_IDENTITY=""
-SSH_OPTS=""
+SSH_OPTS=()
 
 usage() {
     echo "Usage: $0 [-i identity_file] <user@ip> [nix_channel]"
@@ -23,7 +23,7 @@ while getopts "i:" opt; do
         echo "❌ Error: Identity file '$SSH_IDENTITY' not found."
         exit 1
       fi
-      SSH_OPTS="-i $SSH_IDENTITY"
+      SSH_OPTS=("-i" "$SSH_IDENTITY")
       ;;
     *)
       usage
@@ -45,7 +45,7 @@ echo "📦 NixOS Channel: $NIX_CHANNEL"
 
 # 1. Check current OS
 echo "🔍 Checking remote OS..."
-OS_NAME=$(ssh $SSH_OPTS -o StrictHostKeyChecking=no "$TARGET" "cat /etc/os-release" 2>/dev/null | grep PRETTY_NAME || true)
+OS_NAME=$(ssh "${SSH_OPTS[@]}" -o StrictHostKeyChecking=no "$TARGET" "cat /etc/os-release" 2>/dev/null | grep PRETTY_NAME || true)
 
 if [[ "$OS_NAME" == *"NixOS"* ]]; then
     echo "✅ Remote is already NixOS. Aborting infection."
@@ -85,42 +85,10 @@ if [ -z "$KEY_SOURCE" ]; then
     fi
 fi
 
-# 3. Execution payload
-# We construct a script to run on remote
-REMOTE_SCRIPT="
-set -e
-
-# Install curl if missing
-if ! command -v curl >/dev/null; then
-    if command -v apt-get >/dev/null; then
-        sudo apt-get update && sudo apt-get install -y curl
-    elif command -v yum >/dev/null; then
-        sudo yum install -y curl
-    fi
-fi
-
-# Unmount /tmp if needed (fix for some providers)
-sudo umount /tmp 2>/dev/null || true
-
-# Setup root keys
-sudo mkdir -p /root/.ssh
-sudo chmod 700 /root/.ssh
-"
-
-if [ -n "$KEY_SOURCE" ]; then
-    # We will pipe the keys content to the remote command
-    KEYS_CONTENT=$(cat "$KEY_SOURCE")
-    # Escape single quotes for safety in the hereafter wrapper
-    # Actually, easiest is to pipe into the ssh command separately? 
-    # Let's just handle it in the main block below by piping cat to ssh
-    :
-fi
-
 echo "💉 Injecting NixOS..."
 
 # Combine key setup and infection
-# We use a pattern where we pipe the keys into the remote bash via a specialized block or just append to file
-cat "$KEY_SOURCE" | ssh $SSH_OPTS -o StrictHostKeyChecking=no "$TARGET" "
+ssh "${SSH_OPTS[@]}" -o StrictHostKeyChecking=no "$TARGET" "
     # Prepare
     if ! command -v curl >/dev/null; then
         if command -v apt-get >/dev/null; then
@@ -142,12 +110,12 @@ cat "$KEY_SOURCE" | ssh $SSH_OPTS -o StrictHostKeyChecking=no "$TARGET" "
     # Infect
     echo '🚀 Launching nixos-infect...'
     curl https://raw.githubusercontent.com/elitak/nixos-infect/master/nixos-infect | NIX_CHANNEL=$NIX_CHANNEL sudo bash
-"
+" < "$KEY_SOURCE"
 
 echo "⏳ Waiting for SSH to go down..."
 # Simple wait loop
 count=0
-while ssh $SSH_OPTS -q -o ConnectTimeout=2 "$TARGET" exit 2>/dev/null; do
+while ssh "${SSH_OPTS[@]}" -q -o ConnectTimeout=2 "$TARGET" exit 2>/dev/null; do
     printf "."
     sleep 2
     count=$((count+1))
@@ -160,7 +128,7 @@ echo ""
 echo "📉 Host is down (or network reset). Waiting for it to come back up..."
 
 # Wait for up
-while ! ssh $SSH_OPTS -q -o ConnectTimeout=2 "$TARGET" exit 2>/dev/null; do
+while ! ssh "${SSH_OPTS[@]}" -q -o ConnectTimeout=2 "$TARGET" exit 2>/dev/null; do
     printf "."
     sleep 5
 done
@@ -168,7 +136,7 @@ echo ""
 echo "✅ Host is BACK!"
 
 echo "🔍 Verifying NixOS..."
-ssh $SSH_OPTS -o StrictHostKeyChecking=no "$TARGET" "grep PRETTY_NAME /etc/os-release"
+ssh "${SSH_OPTS[@]}" -o StrictHostKeyChecking=no "$TARGET" "grep PRETTY_NAME /etc/os-release"
 
 echo "🎉 Infection complete."
 echo "--------------------------------------------------------"

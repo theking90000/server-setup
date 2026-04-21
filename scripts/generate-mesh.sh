@@ -26,8 +26,10 @@ JSON_DATA=$(nix-instantiate --eval --json --strict -E "import $TOPOLOGY_FILE" | 
 
 # Initialisation du fichier de sortie
 mkdir -p "$SECRETS_DIR"
-echo "{" > "$OUTPUT_NIX"
-echo "  mesh = {" >> "$OUTPUT_NIX"
+cat <<EOF > "$OUTPUT_NIX"
+{
+  mesh = {
+EOF
 
 # 2. Boucle sur les nœuds
 for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
@@ -52,11 +54,13 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     PUB_CONTENT=$(cat "$PUB_KEY")
 
     # Ajout au fichier Nix public
-    echo "    \"$HOSTNAME\" = {" >> "$OUTPUT_NIX"
-    echo "      publicKey = \"$PUB_CONTENT\";" >> "$OUTPUT_NIX"
-    echo "      vpnIp = \"$VPN_IP\";" >> "$OUTPUT_NIX"
-    echo "      publicIp = \"$PUBLIC_IP\";" >> "$OUTPUT_NIX"
-    echo "    };" >> "$OUTPUT_NIX"
+    cat <<EOF >> "$OUTPUT_NIX"
+    "$HOSTNAME" = {
+      publicKey = "$PUB_CONTENT";
+      vpnIp = "$VPN_IP";
+      publicIp = "$PUBLIC_IP";
+    };
+EOF
 done
 
 # Fermeture du fichier Nix
