@@ -9,16 +9,16 @@
 
   outputs =
     {
-      self,
       nixpkgs,
       nixpkgs-darwin,
       colmena,
+      ...
     }:
     {
       nixosModules.default = {
         imports = [
           colmena.nixosModules.deploymentOptions
-          ./nixos/modules/default.nix
+          ./nixos/modules
         ];
       };
 

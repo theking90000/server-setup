@@ -1,9 +1,16 @@
 {
+  "nix.enableLanguageServer": true,
+  "nix.serverPath": "nixd",
+  "nix.formatterPath": "nixfmt",
   "nix.serverSettings": {
     "nixd": {
+      "formatting": { "command": ["nixfmt"] },
+      "nixpkgs": {
+        "expr": "import (builtins.getFlake \"/Users/floppa/Code/personnal/server-setup/server-setup\").inputs.nixpkgs { }"
+      },
       "options": {
         "nixos": {
-          "expr": "(import ./.vscode/eval_nixd.nix).nodes.vps1.options"
+          "expr": "(let flake = builtins.getFlake \"/Users/floppa/Code/personnal/server-setup/server-setup\"; in flake.inputs.nixpkgs.lib.nixosSystem { system = \"x86_64-linux\"; modules = [ flake.nixosModules.default ]; }).options"
         }
       }
     }
