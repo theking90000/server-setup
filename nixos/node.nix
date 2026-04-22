@@ -30,7 +30,7 @@ let
 in
 {
   nixpkgs.hostPlatform = "x86_64-linux";
-  system.stateVersion = "23.11";
+  system.stateVersion = "25.11";
 
   # Configuration Colmena pour le déploiement
   deployment = {
