@@ -5,7 +5,7 @@ set -e
 # et l'enregistre dans le dépôt git pour que Colmena puisse l'utiliser.
 
 TOPOLOGY_FILE="./inventory/topology.nix"
-SECRETS_DIR="./.secrets"
+HARDWARE_DIR="./inventory/hardware"
 
 # Vérification jq
 if ! command -v jq &> /dev/null;
@@ -14,7 +14,7 @@ then
     exit 1
 fi
 
-mkdir -p "$SECRETS_DIR"
+mkdir -p "$HARDWARE_DIR"
 
 echo "🔮 Lecture de la topologie..."
 JSON_DATA=$(nix-instantiate --eval --json --strict -E "import $TOPOLOGY_FILE" | jq .)
@@ -25,7 +25,7 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     USER=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].user // \"root\"")
     SSH_KEY=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].sshKey // \"~/.ssh/id_ed25519\"")
 
-    DEST_DIR="$SECRETS_DIR/$HOSTNAME"
+    DEST_DIR="$HARDWARE_DIR/$HOSTNAME"
     DEST_FILE="$DEST_DIR/hardware.nix"
     
     mkdir -p "$DEST_DIR"
