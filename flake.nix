@@ -23,7 +23,7 @@
       };
 
       # On exporte tes fonctions utilitaires (ops.nix, services.nix)
-      lib = import ./nixos/lib;
+      # lib = import ./nixos/lib;
 
       # On package ton script d'infection pour pouvoir le lancer n'importe où
       # Support multi-architecture (Linux & macOS)
