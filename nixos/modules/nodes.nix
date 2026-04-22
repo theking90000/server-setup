@@ -6,6 +6,12 @@
     description = "Liste de tous les services gérés par l'infrastructure. Utile pour faire du reporting et des vérifications de cohérence. Auto-déclarées par les modules importés.";
   };
 
+  options.infra.nodeName = lib.mkOption {
+    type = lib.types.str;
+    description = "Nom du noeud actuellement évalué. Utilisé par colmena.";
+    default = "";
+  };
+
   options.infra.nodes = lib.mkOption {
     description = "Inventaire des noeuds de l'infrastructure.";
 

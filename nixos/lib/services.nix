@@ -1,30 +1,21 @@
+{ config, lib, ... }:
+let
+  cfg = config.infra;
+  me = cfg.nodes.${cfg.nodeName};
+in
 {
-  lib,
-  nodes,
-  services,
-  name,
-}:
+  _module.args.services = rec {
+    # Vérifie si le noeud courant a un tag
+    hasTag = tag: lib.elem tag (me.tags or [ ]);
 
-rec {
-  # Syntactic Sugar : Vérifie si un noeud a un tag
-  hasTag = tag: lib.elem tag (services."${name}" or [ ]);
+    # Récupère la liste des hostnames qui possèdent un tag précis
+    getHostsByTag =
+      tag: lib.attrNames (lib.filterAttrs (_: node: lib.elem tag (node.tags or [ ])) cfg.nodes);
 
-  # Récupère la liste des hostnames qui possèdent un tag précis
-  getHostsByTag = tag: lib.attrNames (lib.filterAttrs (name: tags: lib.elem tag tags) services);
+    # La "Killer Feature" : IPs VPN de tous les noeuds ayant un tag
+    getVpnIpsByTag = tag: map (h: cfg.nodes.${h}.vpnIp) (getHostsByTag tag);
 
-  # La fonction "Killer Feature" :
-  # Récupère directement les IPs VPN de tous les serveurs possédant un tag
-  getVpnIpsByTag =
-    tag:
-    let
-      hosts = getHostsByTag tag;
-    in
-    map (h: nodes."${h}".vpnIp) hosts;
-
-  getVpnIp =
-    let
-      node = nodes."${name}";
-    in
-    node.vpnIp;
-
+    # IP VPN du noeud courant
+    getVpnIp = me.vpnIp;
+  };
 }

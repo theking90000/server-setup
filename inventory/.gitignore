@@ -1,7 +1,0 @@
-wireguard-*.yml
-hosts.ini
-group_vars/all.yml
-secrets.yml
-common_ssh_key*
-
-topology.nix
