@@ -7,12 +7,15 @@
 }:
 
 let
-  enabled = services.hasTag "web-server";
+  TAG = "web-server";
+
+  enabled = services.hasTag TAG;
 
   getVal = local: global: if local != null then local else global;
 in
 {
   config = lib.mkMerge [
+    { infra.registeredTags = [ TAG ]; }
     # Configurer NGinx si activé
     (lib.mkIf enabled {
       services.nginx = {
@@ -150,7 +153,7 @@ in
         labels = {
           host = host;
         };
-      }) (services.getHostsByTag "web-server");
+      }) (services.getHostsByTag TAG);
 
     }
   ];

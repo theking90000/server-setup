@@ -1,9 +1,9 @@
 { lib, config, ... }:
 {
-  options.infra.handledServices = lib.mkOption {
+  options.infra.registeredTags = lib.mkOption {
     type = lib.types.listOf lib.types.str;
     default = [ ];
-    description = "Liste de tous les services gérés par l'infrastructure. Utile pour faire du reporting et des vérifications de cohérence. Auto-déclarées par les modules importés.";
+    description = "Liste de tous les tags gérés par l'infrastructure. Utile pour faire du reporting et des vérifications de cohérence. Auto-déclarées par les modules importés.";
   };
 
   options.infra.nodeName = lib.mkOption {
@@ -58,10 +58,10 @@
               description = "Chemin de la clé SSH privée utilisée pour se connecter.";
             };
 
-            services = lib.mkOption {
+            tags = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
-              description = "Liste des services à déployer sur ce noeud.";
+              description = "Liste des tags à appliquer sur ce noeud.";
             };
           };
         }
@@ -86,10 +86,10 @@
     lib.mapAttrsToList (
       nodeName: node:
       map (tag: {
-        assertion = builtins.elem tag config.infra.handledTags;
+        assertion = builtins.elem tag config.infra.registeredTags;
         message = ''
           Node "${nodeName}": tag "${tag}" is not handled by any module.
-          Known tags: ${lib.concatStringsSep ", " (lib.unique config.infra.handledTags)}.
+          Known tags: ${lib.concatStringsSep ", " (lib.unique config.infra.registeredTags)}.
           Maybe a typo?
         '';
       }) node.tags
