@@ -111,31 +111,3 @@ in
     }
   ];
 }
-        {
-          port = 5001;
-          allowedTags = [ "prometheus" ];
-          description = "Docker registry metrics";
-        }
-      ];
-
-    })
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag "applications/docker-registry" != [ ]) {
-
-      infra.ingress."docker-registry" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
-        backend = map (ip: "${ip}:5000") (services.getVpnIpsByTag "applications/docker-registry");
-      };
-
-    })
-    {
-
-      infra.telemetry."docker-registry" = map (host: {
-        targets = [ "${host}:5001" ];
-        labels = {
-          host = host;
-        };
-      }) (services.getHostsByTag "applications/docker-registry");
-
-    }
-  ];
-}
