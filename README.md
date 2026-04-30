@@ -10,7 +10,7 @@ Grafana et les cibles Prometheus s'enregistrent dynamiquement. Chaque module
 sait quels autres nœuds existent au moment du build — pas de configuration
 manuelle des IPs entre services.
 
-### NixOS ?
+### NixOS
 
 [NixOS](https://nixos.org) est une distribution Linux déclarative : toute la
 configuration (paquets, services, utilisateurs, firewall, réseau) est décrite
@@ -18,7 +18,7 @@ dans des fichiers `.nix`. Le système est immuable — chaque déploiement produ
 un nouvel état reproductible. Pas de mutation progressive de `/etc`, pas de
 `apt-get install` oublié. Si ça marche aujourd'hui, ça marchera demain.
 
-### Colmena ?
+### Colmena
 
 [Colmena](https://github.com/zhaofengli/colmena) est un orchestrateur de
 déploiement NixOS multi-nœuds. Il évalue la configuration de chaque nœud
@@ -28,14 +28,15 @@ Il déploie via SSH, en parallèle, avec rollback automatique en cas d'échec.
 
 ### Cibles matérielles
 
-VPS [OVH](https://www.ovh.com) provisionnés initialement sous **Debian 11**,
-puis infectés avec NixOS via le script `infect-server`. N'importe quel VPS
-sous Debian 11 (ou 12) fonctionne — les configs hardware sont téléchargées
-automatiquement après infection.
+VPS [OVH](https://www.ovh.com) avec une **IP publique**, provisionnés
+initialement sous **Debian 11**, puis infectés avec NixOS via le script
+`infect-server`. N'importe quel VPS sous Debian 11 (ou 12) avec une IP
+publique fonctionne — les configs hardware sont téléchargées automatiquement
+après l'infection.
 
 ### Prérequis
 
-- **Nix** installé sur ta machine locale ([déterministe Nix](https://determinate.systems/nix-installer/) recommandé)
+- **Nix** installé sur ta machine locale ([installateur officiel](https://nixos.org/download))
 - Une clé SSH configurée (`~/.ssh/id_ed25519`)
 - Un ou plusieurs VPS Debian 11 accessibles en SSH (port 22)
 
