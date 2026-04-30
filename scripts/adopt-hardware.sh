@@ -4,7 +4,7 @@ set -e
 # Ce script récupère la configuration matérielle générée par nixos-infect
 # et l'enregistre dans le dépôt git pour que Colmena puisse l'utiliser.
 
-TOPOLOGY_FILE="./inventory/topology.nix"
+TOPOLOGY_FILE="./inventory/nodes.nix"
 HARDWARE_DIR="./inventory/hardware"
 
 # Vérification jq

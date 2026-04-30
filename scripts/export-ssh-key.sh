@@ -2,7 +2,7 @@
 set -e
 
 # --- CONFIGURATION DU PIPELINE D'ASSETS ---
-TOPOLOGY_FILE="./inventory/topology.nix"
+TOPOLOGY_FILE="./inventory/nodes.nix"
 KEYS_DIR="./inventory/keys"
 
 # Vérification des prérequis (Compliance check)

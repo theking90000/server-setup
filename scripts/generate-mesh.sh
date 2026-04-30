@@ -2,7 +2,7 @@
 set -e
 
 # Chemins
-TOPOLOGY_FILE="./inventory/topology.nix"
+TOPOLOGY_FILE="./inventory/nodes.nix"
 WG_DIR="./inventory/wireguard"
 
 # Vérification des dépendances
