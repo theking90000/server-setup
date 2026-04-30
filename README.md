@@ -160,6 +160,43 @@ Un module :
 
 Guide complet : [`docs/MODULE-GUIDE.md`](docs/MODULE-GUIDE.md).
 
+### Modules NixOS customs (dépôt public ou privé)
+
+Vous pouvez créer vos propres modules NixOS (déclarant des options `infra.*`,
+utilisant `services.hasTag`, `ops.mkSecretKeys`, etc.) dans **l'un ou l'autre**
+des deux dépôts :
+
+| Emplacement                                | Usage                                        |
+|--------------------------------------------|----------------------------------------------|
+| `nixos/modules/<catégorie>/` (dépôt public) | Modules réutilisables partagés entre projets |
+| `modules/` (dépôt privé)                    | Modules spécifiques à votre infrastructure   |
+
+Un module suit toujours le même pattern (voir [Guide complet](docs/MODULE-GUIDE.md)) :
+1. Déclare ses options (`options.infra.<app>.*`)
+2. Enregistre son tag (`infra.registeredTags`)
+3. S'active conditionnellement (`lib.mkIf enabled`)
+4. S'auto-enregistre (ingress, ACLs, backup, telemetry, dashboards)
+5. Gère ses secrets via `ops.mkSecretKeys`
+
+Les modules privés s'importent dans le `flake.nix` privé en les ajoutant
+aux `imports` de la fonction `mkNode`.
+
+### Paquets customs et binaires précompilés
+
+Il est possible d'intégrer des binaires précompilés (sans accès au code source)
+comme paquets Nix customs. Créez une dérivation dans `nixos/pkgs/<app>/` qui
+utilise `fetchurl` pour télécharger le binaire et `autoPatchelfHook` pour
+corriger les liens dynamiques.
+
+Exemple : [`nixos/pkgs/filesave/filesave-server.nix`](nixos/pkgs/filesave/filesave-server.nix)
+— un binaire `x86_64-linux` précompilé intégré sans recompilation. Le module
+correspondant dans `nixos/modules/` référence le paquet via `pkgs.callPackage`
+pour l'utiliser dans un service systemd.
+
+Cette technique fonctionne aussi dans le dépôt privé : créez un dossier
+`pkgs/` contenant vos propres dérivations, importez-les dans le `flake.nix`
+privé, et référencez-les dans vos modules via `pkgs.callPackage`.
+
 ## Structure du dépôt
 
 ```

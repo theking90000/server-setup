@@ -141,3 +141,55 @@ ACLs, etc.).
 2. Crée le fichier de config dans `config/<app>/<app>.nix`
 3. Ajoute l'import dans `config/default.nix`
 4. `just deploy`
+
+## Paquets customs et modules privés
+
+### Binaires précompilés
+
+Si vous avez besoin d'intégrer des binaires précompilés sans code source,
+vous pouvez créer vos propres dérivations Nix. Ajoutez un dossier `pkgs/`
+dans votre dépôt privé contenant des fichiers comme celui-ci :
+
+```nix
+# pkgs/mon-app/mon-app.nix
+{ stdenv, fetchurl, autoPatchelfHook }:
+stdenv.mkDerivation {
+  pname = "mon-app";
+  version = "1.0.0";
+  src = fetchurl {
+    url = "https://example.com/mon-app-linux64";
+    sha256 = "sha256-...";
+  };
+  dontUnpack = true;
+  nativeBuildInputs = [ autoPatchelfHook ];
+  buildInputs = [ stdenv.cc.cc.lib ];
+  installPhase = ''
+    install -m755 -D $src $out/bin/mon-app
+  '';
+}
+```
+
+Puis importez le paquet dans votre flake et référencez-le dans vos modules
+via `pkgs.callPackage ./pkgs/mon-app/mon-app.nix {}`.
+
+### Modules NixOS customs
+
+Vous pouvez créer vos propres modules NixOS dans votre dépôt privé
+(par exemple dans un dossier `modules/`). Importez-les dans le `flake.nix`
+privé en les ajoutant aux `imports` de la fonction `mkNode` :
+
+```nix
+mkNode = name: node: {
+  imports = [
+    ./inventory/hardware/${name}/hardware.nix
+    ./config
+    ./modules                    # vos modules customs
+    infra.nixosModules.default
+  ];
+  # ...
+};
+```
+
+Les modules customs peuvent déclarer leurs propres options `infra.*`
+et utiliser `services.hasTag`, `ops.mkSecretKeys`, etc. comme n'importe
+quel module du dépôt public.

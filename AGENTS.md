@@ -76,6 +76,29 @@ New private repos are created from `template/` via the `bootstrap-project`
 script (packaged in the flake). The template includes `flake.nix`, `justfile`,
 `inventory/nodes.nix`, and `config/*.nix` with `CHANGEME` placeholders.
 
+### Custom packages (`pkgs/`)
+
+Precompiled binaries (no source) go in `nixos/pkgs/<app>/`. Pattern:
+`fetchurl` to download the binary, `autoPatchelfHook` to fix ELF dynamic
+linker paths, `dontUnpack = true`, install into `$out/bin/`.
+
+See `nixos/pkgs/filesave/filesave-server.nix` for an example.
+
+Same technique works in the **private repo**: create a `pkgs/` directory,
+add derivations, and import them via `pkgs.callPackage` in a module.
+
+### Custom modules (public or private repo)
+
+NixOS modules can live in **either** repository:
+
+| Location                              | When to use                            |
+|---------------------------------------|----------------------------------------|
+| `nixos/modules/<category>/` (public)   | Reusable modules shared across projects |
+| `<private>/modules/`                   | Project-specific infra modules          |
+
+Private modules follow the same module checklist below. Import them in the
+private `flake.nix` by adding `./modules` to the `imports` list in `mkNode`.
+
 ## Module checklist
 
 See `docs/MODULE-GUIDE.md` for the complete guide. Quick reference:
