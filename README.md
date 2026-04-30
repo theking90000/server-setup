@@ -1,136 +1,143 @@
 # Server Setup
 
-Ce dépôt contient des scripts et des configurations pour automatiser la mise en place et la gestion de serveurs avec [NixOS](https://nixos.org) et [colmena](https://github.com/zhaofengli/colmena).
+Automatisation de serveurs NixOS avec [Colmena](https://github.com/zhaofengli/colmena).
 
-Pour le moment, le setup fonctionne sur des VPS OVH. Chaque serveur est initialement provisionné sous Debian 11, avec l'utilisateur `debian` accessible en ssh (port 22) via une clé préalablement configurée.
+Cible : VPS OVH provisionnés en Debian 11, infectés avec NixOS.
 
-Prérequis :
+## Architecture deux dépôts
 
-- Terminal Bash
-- Utilitaires de base : curl, jq, ssh, ... (non exhaustif)
-- Nix installé sur la machine en local
-- [Colmena](https://github.com/zhaofengli/colmena) disponible dans l'environnement (`nix-shell -p colmena` ou installé de manière permanente).
-- Un ou plusieurs hôte(s) distant(s) à configurer/gérer.
+Ce dépôt est le **dépôt public** — il contient les modules NixOS réutilisables
+(configuration réseau, services, monitoring, sécurité), les scripts de déploiement,
+et le *template* pour créer un dépôt privé.
 
-## 1. Déploiement
+Le **dépôt privé** contient les secrets, les IPs, les tags et la topologie
+spécifique à ton infrastructure. Il importe ce dépôt public comme input Flake
+et définit les valeurs des options `infra.*`.
 
-Pour déployer les serveurs, il faut tout d’abord infecter chaque serveur manuellement avec NixOS.
+```
+┌─ github:theking90000/server-setup (public) ─┐
+│  nixos/modules/   ← modules NixOS            │
+│  template/        ← squelette privé           │
+│  scripts/         ← infect, mesh, bootstrap…  │
+│  flake.nix        ← packages, nixosModules    │
+└──────────────────────────────────────────────┘
+                    ↓ importé par
+┌─ dépôt privé ────────────────────────────────┐
+│  flake.nix        ← input infra + déploiement │
+│  inventory/nodes.nix   ← IPs, tags, topologie │
+│  config/*.nix     ← URLs, credentials (infra.*)│
+│  justfile         ← commandes de déploiement   │
+└──────────────────────────────────────────────┘
+```
+
+## Démarrage rapide
 
 ```sh
-./scripts/infect.sh -i <clé-ssh> <user>@<ip>
+# 1. Créer un dépôt privé depuis le template
+nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
+
+# 2. Éditer les valeurs
+cd ./my-infra
+# → inventory/nodes.nix : remplacer tous les CHANGEME (IPs, tags, clé SSH)
+# → config/*.nix        : remplacer tous les CHANGEME (URLs, credentials)
+
+# 3. Entrer dans l'environnement
+nix develop
+
+# 4. Infecter chaque VPS
+infect-server -i ~/.ssh/id_ed25519 root@<ip>
+
+# 5. Tout déployer
+just deploy
 ```
 
-Le script utilise la clé SSH pour se connecter au serveur, copie la clé publique dans le compte root et lance le script [nixos-infect](https://github.com/elitak/nixos-infect).
+## Scripts
 
-Le serveur redémarrera sous NixOS, et l’utilisateur `root` sera accessible en SSH (port 22) avec la clé utilisée pour l’infection.
+Tous les scripts sont disponibles dans le `devShell` (via `nix develop` ou `direnv`) :
 
-## 2. Configuration de Colmena
+| Commande            | Description                                                            |
+|---------------------|------------------------------------------------------------------------|
+| `bootstrap-project` | Crée un nouveau dépôt privé depuis le template                         |
+| `infect-server`     | Infecte un VPS Debian 11 avec NixOS                                    |
+| `adopt-hardware`    | Télécharge les configs hardware depuis les VPS                         |
+| `generate-mesh`     | Génère les clés WireGuard du mesh                                      |
+| `export-ssh-key`    | Télécharge les clés SSH publiques des hôtes                            |
+| `generate-key`      | Génère la clé SSH pour le cert-syncer (ACME)                           |
 
-Il faut ensuite configurer la flotte Colmena. Le script `hive.nix` est géré par `inventory/topology.nix` (renommer le fichier `inventory/topology.example.nix`).
+## Fonctionnement
 
-Il faut ajouter chaque hôte dans la config :
+### Tags
 
-```nix
-{
-  nodes = {
-    vps1 = {
-      publicIp = "1.2.3.4";
-      vpnIp = "10.100.0.1";
-      ipv6 = "0001:0002:XXX";
-      ipv6_gateway = "<a trouver dans le panel OVH>";
+Chaque nœud reçoit des **tags** dans `inventory/nodes.nix` (dépôt privé).
+Les modules NixOS s'activent automatiquement en fonction de ces tags via
+`services.hasTag`.
 
-      user = "root";
-      sshKey = "~/.ssh/id_ed25519"; # emplacement local
-    };
-}
+Les tags disponibles et leurs descriptions sont listés dans
+[`docs/MODULE-GUIDE.md`](docs/MODULE-GUIDE.md).
+
+### Réseau VPN (WireGuard)
+
+Tous les nœuds sont reliés par un mesh WireGuard. Chaque service écoute
+sur l'IP VPN (`services.getVpnIp`), jamais sur l'interface publique.
+Seul Nginx (tag `web-server`) expose des ports publiquement (80/443).
+
+### Secrets
+
+Les secrets (passwords, tokens) ne transitent **jamais** par `/nix/store`.
+Ils sont déclarés comme options NixOS (`infra.<app>.password`, etc.) et
+déployés directement sur les nœuds via `ops.mkSecretKeys` → Colmena
+`deployment.keys` → upload SSH au moment du déploiement.
+
+Les services lisent les secrets depuis `/var/lib/secrets/<app>/` ou
+via systemd `LoadCredential`.
+
+### Module NixOS
+
+Chaque service est un module dans `nixos/modules/<catégorie>/`.
+Un module :
+1. Déclare ses options (`options.infra.<app>.*`)
+2. Enregistre son tag (`infra.registeredTags`)
+3. S'active conditionnellement (`lib.mkIf enabled`)
+4. S'auto-enregistre auprès des autres services (ingress, ACLs, backup, telemetry, dashboards)
+
+Guide complet : [`docs/MODULE-GUIDE.md`](docs/MODULE-GUIDE.md).
+
+## Structure du dépôt
+
+```
+├── flake.nix              ← packages, nixosModules, devShells
+├── hive.nix               ← point d'entrée Colmena (imports dépôt privé)
+├── AGENTS.md              ← instructions pour agents IA
+├── README.md              ← ce fichier
+├── scripts/               ← scripts shell (infect, mesh, bootstrap...)
+├── template/              ← squelette pour bootstrap-project
+├── inventory/             ← exemples pour le dépôt privé
+├── nixos/
+│   ├── modules/           ← modules NixOS
+│   │   ├── default.nix
+│   │   ├── nodes.nix
+│   │   ├── applications/  ← docker-registry, gitea, ntfy, reposilite, filesave
+│   │   ├── backup/        ← restic
+│   │   ├── monitoring/    ← node-metrics, prometheus, grafana
+│   │   ├── web/           ← nginx + ingress
+│   │   ├── network/       ← wireguard, ssh
+│   │   └── security/      ← acls, acme
+│   └── lib/               ← services.nix, ops.nix
+├── config/                ← (supprimé — config dans le dépôt privé)
+├── docs/                  ← documentation
+│   └── MODULE-GUIDE.md    ← guide complet d'écriture de module
+└── pkgs/                  ← paquets Nix customs
 ```
 
-Il faut ensuite exécuter le script `adopt-hardware.sh` afin de télécharger localement le fichier de configuration hardware généré par nixos-infect. Ce script télécharge, pour tous les serveurs déclarés dans `topology.nix`, le fichier `/etc/nixos/hardware-configuration.nix` et le copie dans le répertoire local `.secrets/<host>`.
+## Vérification
 
 ```sh
-./scripts/adopt-hardware.sh
+nix flake check --all-systems    # valide tous les modules
 ```
 
-Ensuite, le mesh WireGuard doit être généré localement : celui-ci génère, pour chaque serveur déclaré dans `topology.nix`, une clé privée WireGuard, ainsi qu'un fichier local `.secrets/mesh.nix` contenant la topologie et les clés de chaque nœud.
+## Déploiement (depuis le dépôt privé)
 
 ```sh
-./scripts/generate-mesh.sh
+colmena apply                    # tous les nœuds
+colmena apply --on vps1          # un seul nœud
 ```
-
-Ne pas oublier de télécharger localement la clé publique de chaque serveur (`.secrets`). Ceci est utilisé lors de la configuration du serveur SSH de NixOS. Si la clé publique n'est pas téléchargée, l'ancienne configuration (de nixos-infect) sera écrasée et le serveur sera rendu inaccessible ; il faudra tout recommencer depuis le début (réinstallation OVH).
-
-```sh
-./scripts/export-ssh-key.sh
-```
-
-Et finalement, générer une clé SSH pour l'utilisateur `cert-syncer`, utilisé pour répliquer les certificats TLS générés par ACME. Cette partie est optionnelle si aucun nœud n'est taggé avec `acme-issuer` (voir plus loin).
-
-```sh
-./scripts/generate-key.sh
-```
-
-## 3. Configuration des serveurs
-
-Tous les nœuds partagent la même configuration (dans `nixos/`), cependant certaines parties de la configuration ne sont pas activées, en fonction des tags dont chaque serveur dispose.
-
-Tous les serveurs sont reliés par un réseau virtuel géré par WireGuard, l’IP virtuelle est définie dans `inventory/topology.nix`.
-
-Chaque nœud doit être taggé pour activer ou désactiver certaines parties de la config ; la configuration en « réseau » est automatique, c’est-à-dire que les nœuds sont configurés pour interagir avec les autres nœuds de manière automatique. Si un nœud possède le tag `web-server`, il pourrait faire office d’accès frontend pour un service hébergé sur un autre nœud automatiquement (via le réseau WireGuard). L’avantage d’une configuration globale Colmena est la connaissance des autres peers au moment du build de l’image NixOS. Ceci implique également qu’à chaque modification de topologie (suppression, ajout de serveur), tous les nœuds doivent être mis à jour avec la nouvelle configuration.
-
-Chaque serveur doit être taggé dans `inventory/services.nix` :
-
-```nix
-{
-  vps1 = [
-    "node-metrics"
-    "prometheus"
-    "backup"
-  ];
-
-  vps2 = [
-    "node-metrics"
-    "prometheus"
-    "grafana"
-    "acme-issuer"
-    "web-server"
-    "backup"
-  ];
-}
-```
-
-Pour déployer la configuration, utiliser colmena :
-
-```sh
-colmena apply
-
-# Ou sur un seul host pour "tester":
-colmena apply --on vps2
-```
-
-### Liste des tags
-
-| Nom            | Description                                                                                                                                                                                                  |
-| :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `node-metrics` | Active l'exportation des métriques du nœud (CPU, RAM, disque, etc.) via Prometheus Node Exporter.                                                                                                            |
-| `prometheus`   | Déploie une instance Prometheus pour collecter et stocker les métriques provenant des autres nœuds (`node-metrics`).                                                                                         |
-| `grafana`      | Installe et configure Grafana pour visualiser les données collectées par Prometheus.                                                                                                                     |
-| `acme-issuer`  | Désigne ce nœud comme responsable de la génération et du renouvellement des certificats SSL/TLS via ACME (Let's Encrypt). Configure ACME ainsi qu'un utilisateur SSH `cert-syncer`.                       |
-| `web-server`   | Configure un serveur web (Nginx) pour servir des applications. Écoute sur le port public 443.                                                                                                                |
-| `backup`       | Active les scripts et services de sauvegarde automatique (via restic).                                                                                                                                     |
-
-Par défaut, seul le port 22 (SSH) est ouvert sur la machine ; les autres ports peuvent être ouverts par d'autres tags.
-
-La philosophie est d'exposer les applications sur le réseau VPN (WireGuard) au lieu de bind sur le port public. Chaque application (du moins pour l'HTTP) doit donc passer par le proxy unique Nginx afin de sortir vers le monde extérieur.
-
-### Configuration des applications
-
-Les options de configuration (URLs, credentials, etc.) sont déclarées comme options NixOS sous le namespace `infra.*`. Les valeurs sont définies dans le dépôt privé et les secrets sont déployés via Colmena (`deployment.keys`) sans jamais transiter par `/nix/store`.
-
-### Applications (tags)
-
-| Nom                            | Description                                                                                                          |
-| :----------------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| `applications/docker-registry` | Déploie un registre Docker pour stocker et gérer les images conteneurs.                    |
-| `applications/reposilite`      | Installe un gestionnaire de dépôts Maven compatible pour héberger des artefacts Java.      |
-| `applications/gitea`           | Déploie un serveur Gitea                                                                    |
-| `applications/ntfy`            | Déploie un serveur ntfy pour les notifications push                                        |

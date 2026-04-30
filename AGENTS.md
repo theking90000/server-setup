@@ -70,6 +70,12 @@ Never in `/nix/store`. `ops.mkSecretKeys` → Colmena `deployment.keys` →
 uploaded via SSH at deploy time. Read via systemd `LoadCredential` or
 direct file path in `/var/lib/secrets/<app>/`.
 
+### Bootstrap
+
+New private repos are created from `template/` via the `bootstrap-project`
+script (packaged in the flake). The template includes `flake.nix`, `justfile`,
+`inventory/nodes.nix`, and `config/*.nix` with `CHANGEME` placeholders.
+
 ## Module checklist
 
 See `docs/MODULE-GUIDE.md` for the complete guide. Quick reference:
@@ -94,20 +100,22 @@ colmena apply --on <host>        # deploy single host
 
 ## Scripts
 
-```sh
-./scripts/infect.sh -i <ssh-key> <user>@<ip>   # NixOS infection
-./scripts/adopt-hardware.sh                     # download hardware configs
-./scripts/generate-mesh.sh                      # generate WireGuard keys
-./scripts/export-ssh-key.sh                     # download host SSH pubkeys
-./scripts/generate-key.sh                       # generate cert-syncer key
-```
+| Command              | Description                                    |
+|----------------------|------------------------------------------------|
+| `bootstrap-project`  | Create new private repo from template           |
+| `infect-server`      | Infect Debian VPS with NixOS                    |
+| `adopt-hardware`     | Download hardware configs from VPS              |
+| `generate-mesh`      | Generate WireGuard mesh keys                    |
+| `export-ssh-key`     | Download host SSH pubkeys                       |
+| `generate-key`       | Generate cert-syncer SSH key (ACME)             |
 
 ## Key files to know
 
 | File                                 | Purpose                                       |
 |--------------------------------------|-----------------------------------------------|
-| `flake.nix`                          | Flake entry (Colmena hive + devShell)          |
-| `hive.nix`                           | Colmena deployment entry (imports private)     |
+| `flake.nix`                          | Flake entry (packages, nixosModules)           |
+| `AGENTS.md`                          | This file                                      |
+| `template/`                          | Skeleton for `bootstrap-project`               |
 | `nixos/modules/nodes.nix`            | Node inventory options + tag assertions        |
 | `nixos/lib/services.nix`             | Service discovery functions                    |
 | `nixos/lib/ops.nix`                  | mkSecretKeys helper                            |
