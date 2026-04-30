@@ -36,7 +36,7 @@ après l'infection.
 
 ### Prérequis
 
-- **Nix** installé sur ta machine locale ([installateur officiel](https://nixos.org/download))
+- **Nix** installé sur votre machine locale ([installateur officiel](https://nixos.org/download))
 - Une clé SSH configurée (`~/.ssh/id_ed25519`)
 - Un ou plusieurs VPS Debian 11 accessibles en SSH (port 22)
 
@@ -47,7 +47,7 @@ Ce dépôt est le **dépôt public** — il contient les modules NixOS réutilis
 et le *template* pour créer un dépôt privé.
 
 Le **dépôt privé** contient les secrets, les IPs, les tags et la topologie
-spécifique à ton infrastructure. Il importe ce dépôt public comme input Flake
+spécifique à votre infrastructure. Il importe ce dépôt public comme input Flake
 et définit les valeurs des options `infra.*`.
 
 ```
@@ -65,6 +65,28 @@ et définit les valeurs des options `infra.*`.
 │  justfile         ← commandes de déploiement   │
 └──────────────────────────────────────────────┘
 ```
+
+## Stack déployée
+
+Une fois configuré, le projet déploie une infrastructure complète :
+
+| Service      | Rôle                                                                 |
+|--------------|----------------------------------------------------------------------|
+| **Nginx**    | Reverse proxy front-end, exposé sur le port 443 public. Termine le TLS via des certificats Let's Encrypt (ACME) générés automatiquement. Route le trafic vers les services internes via le VPN WireGuard. |
+| **WireGuard**| Mesh VPN reliant tous les nœuds. Chaque service écoute sur son IP VPN, jamais sur l'interface publique. Les ACLs firewall (nftables) sont générées automatiquement à partir des tags. |
+| **Prometheus**| Collecte les métriques de tous les nœuds et services (Node Exporter, Nginx VTS, Gitea, Docker Registry, Ntfy, Reposilite). Les cibles sont auto-découvertes via les tags. |
+| **Grafana**  | Visualise les métriques via des dashboards auto-provisionnés. Chaque module peut fournir ses propres dashboards JSON, injectés dynamiquement. |
+| **Restic**   | Sauvegarde automatique des données de tous les services (Gitea, Docker Registry, Grafana, etc.) vers un stockage S3. |
+| **Gitea**    | Serveur Git auto-hébergé avec métriques Prometheus. |
+| **Docker Registry** | Registre Docker privé avec authentification htpasswd et métriques. |
+| **Ntfy**     | Serveur de notifications push avec métriques. |
+| **Reposilite** | Gestionnaire de dépôts Maven avec métriques. |
+| **FileSave** | Serveur d'hébergement de fichiers. |
+
+Le tout est orchestré par **Colmena** : un seul `just deploy` suffit pour
+construire et déployer l'intégralité de la configuration sur tous les nœuds
+en parallèle. Les certificats TLS (Let's Encrypt) sont renouvelés
+automatiquement via un mécanisme de synchronisation entre nœuds (cert-syncer).
 
 ## Démarrage rapide
 

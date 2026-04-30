@@ -8,7 +8,7 @@ Déploiement NixOS + Colmena pour mon infra.
 nix develop
 ```
 
-Ça te donne accès aux outils : `colmena`, `just`, et tous les scripts
+Cela donne accès aux outils : `colmena`, `just`, et tous les scripts
 (`infect-server`, `generate-mesh`, `adopt-hardware`, etc.).
 
 ## Étapes de déploiement
@@ -27,7 +27,7 @@ nix develop
       ipv6_gateway = "2001:41d0:305:2100::1"; # Passerelle IPv6
 
       user = "root";
-      sshKey = "~/.ssh/id_ed25519";      # Chemin local de ta clé SSH
+      sshKey = "~/.ssh/id_ed25519";      # Chemin local de votre clé SSH
 
       tags = [                           # Services à activer sur ce nœud
         "web-server"
@@ -55,8 +55,8 @@ nix develop
 - `config/reposilite/reposilite.nix` → URL
 - `config/filesave/filesave.nix` → URL
 
-Supprime les fichiers `config/<app>/<app>.nix` des applications que tu
-n'utilises pas, et retire-les de `config/default.nix`.
+Supprimez les fichiers `config/<app>/<app>.nix` des applications que vous
+n'utilisez pas, et retirez-les de `config/default.nix`.
 
 ### 3. Mettre à jour la librairie publique
 
