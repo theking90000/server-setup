@@ -26,10 +26,6 @@ JSON_DATA=$(nix-instantiate --eval --json --strict -E "import $TOPOLOGY_FILE" | 
 # 2. Boucle sur les nœuds
 for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     
-    # Récupération des infos du host via jq
-    VPN_IP=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].vpnIp")
-    PUBLIC_IP=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].publicIp")
-    
     HOST_DIR="$WG_DIR/$HOSTNAME"
     mkdir -p "$HOST_DIR"
     
