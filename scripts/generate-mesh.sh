@@ -3,8 +3,7 @@ set -e
 
 # Chemins
 TOPOLOGY_FILE="./inventory/topology.nix"
-SECRETS_DIR="./.secrets"
-OUTPUT_NIX="$SECRETS_DIR/mesh.nix"
+WG_DIR="./inventory/wireguard"
 
 # Vérification des dépendances
 if ! command -v jq &> /dev/null;
@@ -24,13 +23,6 @@ echo "🔮 Lecture de la topologie Nix..."
 
 JSON_DATA=$(nix-instantiate --eval --json --strict -E "import $TOPOLOGY_FILE" | jq .)
 
-# Initialisation du fichier de sortie
-mkdir -p "$SECRETS_DIR"
-cat <<EOF > "$OUTPUT_NIX"
-{
-  mesh = {
-EOF
-
 # 2. Boucle sur les nœuds
 for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     
@@ -38,11 +30,11 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     VPN_IP=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].vpnIp")
     PUBLIC_IP=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].publicIp")
     
-    HOST_DIR="$SECRETS_DIR/$HOSTNAME"
+    HOST_DIR="$WG_DIR/$HOSTNAME"
     mkdir -p "$HOST_DIR"
     
-    PRIV_KEY="$HOST_DIR/wireguard.private"
-    PUB_KEY="$HOST_DIR/wireguard.public"
+    PRIV_KEY="$HOST_DIR/private.key"
+    PUB_KEY="$HOST_DIR/public.key"
 
     # Génération des clés si absentes
     if [ ! -f "$PRIV_KEY" ]; then
@@ -51,20 +43,5 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
         wg genkey | tr -d '\n' | tee "$PRIV_KEY" | wg pubkey | tr -d '\n' > "$PUB_KEY"
     fi
 
-    PUB_CONTENT=$(cat "$PUB_KEY")
-
-    # Ajout au fichier Nix public
-    cat <<EOF >> "$OUTPUT_NIX"
-    "$HOSTNAME" = {
-      publicKey = "$PUB_CONTENT";
-      vpnIp = "$VPN_IP";
-      publicIp = "$PUBLIC_IP";
-    };
-EOF
+echo "✅ Clés générées pour $HOSTNAME : $PRIV_KEY et $PUB_KEY"
 done
-
-# Fermeture du fichier Nix
-echo "  };
-}" >> "$OUTPUT_NIX"
-
-echo "✅ Configuration Mesh mise à jour : $OUTPUT_NIX"

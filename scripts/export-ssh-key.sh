@@ -3,7 +3,7 @@ set -e
 
 # --- CONFIGURATION DU PIPELINE D'ASSETS ---
 TOPOLOGY_FILE="./inventory/topology.nix"
-SECRETS_DIR="./.secrets"
+KEYS_DIR="./inventory/keys"
 
 # Vérification des prérequis (Compliance check)
 if ! command -v jq &> /dev/null; then
@@ -16,12 +16,12 @@ echo "🔮 Audit de la topologie Nix en cours..."
 JSON_DATA=$(nix-instantiate --eval --json --strict -E "import $TOPOLOGY_FILE" | jq .)
 
 # Création du répertoire racine (si inexistant)
-mkdir -p "$SECRETS_DIR"
+mkdir -p "$KEYS_DIR"
 
 # 2. Itération sur les nœuds (Batch Processing)
 for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     
-    HOST_DIR="$SECRETS_DIR/$HOSTNAME"
+    HOST_DIR="$KEYS_DIR/$HOSTNAME"
     OUTPUT_KEY="$HOST_DIR/key.pub"
     mkdir -p "$HOST_DIR"
 
