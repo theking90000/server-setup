@@ -26,6 +26,11 @@ let
   enabled = services.hasTag tag;
 
   pkg = config.infra.sncb-insights.package;
+
+  sncb-insights-wrapper = pkgs.writeShellScriptBin "sncb-insights" ''
+    cd ${dataDir} || exit 1
+    exec ${lib.getExe pkg} "$@"
+  '';
 in
 {
   options.infra.sncb-insights = {
@@ -88,6 +93,8 @@ in
 
     # --- Wake timer (all nodes with the tag) ---
     (lib.mkIf (enabled && pkg != null) {
+      environment.systemPackages = [ sncb-insights-wrapper ];
+
       systemd.timers.sncb-insights-wake = {
         description = "SNCB Insights periodic wake timer";
         wantedBy = [ "timers.target" ];
