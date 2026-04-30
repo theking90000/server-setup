@@ -10,6 +10,7 @@
 #   - gitea              : serveur Git auto-hébergé (tag: applications/gitea)
 #   - ntfy               : serveur de notifications push (tag: applications/ntfy)
 #   - reposilite         : gestionnaire de dépôts Maven (tag: applications/reposilite)
+#   - sncb-insights      : scraping des données de la SNCB (tag: applications/sncb-insights)
 # -------------------------------------------------------------------------
 {
   imports = [
@@ -18,5 +19,6 @@
     ./gitea.nix
     ./ntfy.nix
     ./reposilite.nix
+    ./sncb-insights.nix
   ];
 }
