@@ -54,9 +54,24 @@ in
           assertion = pkg != null;
           message = ''
             Le paquet 'pkgs.sncb-insights' est introuvable.
-            Ajoutez https://github.com/theking90000/belgian-rail-data comme input
-            de votre flake.nix privé et incluez-le (overlay / packages) pour
-            exposer 'sncb-insights'.
+
+            Ajoutez ceci dans le flake.nix de votre dépôt privé :
+
+              1. Dans inputs :
+                 sncb-insights.url = "github:theking90000/belgian-rail-data";
+
+              2. Dans outputs, ajoutez sncb-insights aux arguments :
+                 { nixpkgs, nixpkgs-darwin, infra, colmena, sncb-insights, ... }:
+
+              3. Dans colmena.meta.nixpkgs, ajoutez un overlay :
+                 nixpkgs = import nixpkgs {
+                   system = "x86_64-linux";
+                   overlays = [
+                     (final: prev: {
+                       sncb-insights = sncb-insights.packages.x86_64-linux.sncb-insights;
+                     })
+                   ];
+                 };
           '';
         }
       ];
