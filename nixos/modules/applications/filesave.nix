@@ -1,4 +1,17 @@
+# -------------------------------------------------------------------------
+# filesave.nix — Serveur de partage de fichiers
+#
+# Déploie le serveur filesave-server (package custom) écoutant sur
+# l'IP VPN (port 22551). Si une URL publique est configurée, déclare
+# automatiquement les ACLs et l'ingress Nginx.
+#
+# La configuration est optionnelle (le module fonctionne sans si le
+# fichier de config n'existe pas dans le repo privé).
+#
+# Tags requis : `applications/filesave-server`
+# -------------------------------------------------------------------------
 {
+  config,
   services,
   lib,
   pkgs,
@@ -10,21 +23,22 @@ let
 
   tag = "applications/filesave-server";
   dataDir = "/var/lib/filesave-server";
-
   port = 22551;
 
   enabled = services.hasTag tag;
-
-  cfg =
-    if builtins.pathExists ../../../config/filesave/filesave.nix then
-      import ../../../config/filesave/filesave.nix
-    else
-      { };
 in
 {
-  config = lib.mkMerge [
-    (lib.mkIf enabled {
+  options.infra.filesave = {
+    url = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "URL publique du serveur FileSave (ex: https://filesave.example.com).";
+    };
+  };
 
+  config = lib.mkMerge [
+    { infra.registeredTags = [ tag ]; }
+    (lib.mkIf enabled {
       users.users.filesave = {
         isSystemUser = true;
         group = "filesave";
@@ -35,7 +49,6 @@ in
 
       users.groups.filesave = { };
 
-      # 2. Le Service Systemd
       systemd.services.filesave-server = {
         description = "Filesave Server";
         wantedBy = [ "multi-user.target" ];
@@ -74,15 +87,11 @@ in
       infra.backup.paths = [ dataDir ];
 
     })
-
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
-
+    (lib.mkIf (config.infra.filesave.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."filesave-server" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
+        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.filesave.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
       };
-
     })
-
   ];
 }

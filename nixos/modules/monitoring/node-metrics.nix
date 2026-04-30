@@ -9,6 +9,7 @@ let
 in
 {
   config = lib.mkMerge [
+    { infra.registeredTags = [ "node-metrics" ]; }
     (lib.mkIf isEnabled {
       services.prometheus.exporters.node = {
         enable = true;

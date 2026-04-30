@@ -1,52 +1,57 @@
-{
-  name,
-  ...
-}:
+# -------------------------------------------------------------------------
+# wireguard.nix — Mesh VPN WireGuard entre tous les noeuds
+#
+# Configure l'interface wg0 avec un maillage complet (full mesh) :
+# chaque noeud est peer de tous les autres. La topologie est lue
+# depuis `config.infra.nodes` fourni par le repo privé.
+#
+# La clé privée WireGuard est déployée par le repo privé via
+# `deployment.keys."wg-key"` (Colmena). Ce module ne fait que
+# référencer le fichier déployé.
+#
+# Nécessite que chaque noeud de `infra.nodes` ait :
+#   - vpnIp               : IP virtuelle dans le mesh
+#   - publicIp            : endpoint public
+#   - wireguardPublicKey  : clé publique WireGuard
+#
+# Ouvre le port UDP 51820 et peuple /etc/hosts avec les IPs VPN.
+# -------------------------------------------------------------------------
+{ config, lib, ... }:
 
 let
-  wg = import ../../../.secrets/mesh.nix;
+  nodeName = config.infra.nodeName;
+  nodes = config.infra.nodes;
+
+  me = nodes.${nodeName};
+
+  peerNames = builtins.attrNames (builtins.removeAttrs nodes [ nodeName ]);
 in
 {
-  # Importer la clé
-  deployment.keys."wg-key" = {
-    keyFile = ../../../.secrets/${name}/wireguard.private;
-    destDir = "/var/lib/secrets";
-    user = "root";
-    group = "root";
-    permissions = "0400";
-    name = "wg-key";
-  };
-
-  # Ouverture du port UDP pour Wireguard
   networking.firewall.allowedUDPPorts = [ 51820 ];
 
-  # Configuration de l'interface Wireguard
-  networking.wireguard.interfaces.wg0 = {
-    ips = [ "${wg.mesh.${name}.vpnIp}/24" ];
+  networking.wireguard.interfaces.wg0 = lib.mkIf (me.vpnIp != null) {
+    ips = [ "${me.vpnIp}/24" ];
     listenPort = 51820;
 
     privateKeyFile = "/var/lib/secrets/wg-key";
 
-    peers = builtins.map (
-      peerName:
+    peers = map (peerName:
       let
-        peer = wg.mesh.${peerName};
+        peer = nodes.${peerName};
       in
       {
-        publicKey = peer.publicKey;
+        publicKey = peer.wireguardPublicKey;
         allowedIPs = [ "${peer.vpnIp}/32" ];
         endpoint = "${peer.publicIp}:51820";
         persistentKeepalive = 25;
       }
-    ) (builtins.attrNames (builtins.removeAttrs wg.mesh [ name ]));
+    ) peerNames;
   };
 
-  # Configuration du DNS
   networking.hosts = builtins.listToAttrs (
-    builtins.map (name: {
-      name = wg.mesh.${name}.vpnIp;
-      value = [ name ];
-    }) (builtins.attrNames wg.mesh)
+    map (n: {
+      name = nodes.${n}.vpnIp;
+      value = [ n ];
+    }) (builtins.attrNames nodes)
   );
-
 }

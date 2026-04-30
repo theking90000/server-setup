@@ -1,4 +1,17 @@
+# -------------------------------------------------------------------------
+# grafana.nix — Dashboard Grafana pour la visualisation des métriques
+#
+# Déploie Grafana écoutant sur l'IP VPN (port 3000), configuré avec
+# les datasources Prometheus auto-découvertes via le tag `prometheus`.
+#
+# Si une URL publique est définie, déclare automatiquement les ACLs
+# et l'ingress Nginx pour l'exposer.
+#
+# Tags requis : `grafana`
+# Secrets     : `infra.grafana.{password, grafana_secret}` (Colmena)
+# -------------------------------------------------------------------------
 {
+  config,
   lib,
   services,
   ops,
@@ -7,13 +20,38 @@
 
 let
   enabled = services.hasTag "grafana";
-  cfg = (import ../../../config/grafana/grafana.nix);
 in
 {
+  options.infra.grafana = {
+    url = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "URL publique d'accès à Grafana (ex: https://grafana.example.com).";
+    };
+
+    user = lib.mkOption {
+      type = lib.types.str;
+      default = "admin";
+      description = "Nom d'utilisateur administrateur Grafana.";
+    };
+
+    password = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Mot de passe administrateur Grafana (secret, déployé via Colmena).";
+    };
+
+    grafana_secret = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Clé secrète Grafana pour le chiffrement des sessions (secret, déployé via Colmena).";
+    };
+  };
 
   config = lib.mkMerge [
+    { infra.registeredTags = [ "grafana" ]; }
     (lib.mkIf enabled {
-      deployment.keys = ops.mkSecretKeys "grafana" cfg [
+      deployment.keys = ops.mkSecretKeys "grafana" config.infra.grafana [
         "password"
         "grafana_secret"
       ];
@@ -32,12 +70,12 @@ in
             http_port = 3000;
             http_addr = services.getVpnIp;
 
-            root_url = cfg.url;
+            root_url = config.infra.grafana.url;
           };
 
           security = {
             admin_password = "$__file{/run/credentials/grafana.service/admin_pwd}";
-            admin_user = cfg.user;
+            admin_user = config.infra.grafana.user;
             secret_key = "$__file{/run/credentials/grafana.service/grafana_secret}";
           };
         };
@@ -57,7 +95,6 @@ in
         provision.datasources.settings.datasources = map (ip: {
           name = "Prometheus";
           type = "prometheus";
-
           url = "http://${ip}:9090";
         }) (services.getVpnIpsByTag "prometheus");
       };
@@ -65,7 +102,7 @@ in
       infra.backup.paths = [ "/var/lib/grafana/data" ];
 
     })
-    (lib.mkIf (cfg.url != null) {
+    (lib.mkIf (config.infra.grafana.url != null) {
       infra.security.acls = [
         {
           port = 3000;
@@ -75,7 +112,7 @@ in
       ];
 
       infra.ingress."grafana" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
+        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.grafana.url;
         backend = map (ip: "${ip}:3000") (services.getVpnIpsByTag "grafana");
       };
     })

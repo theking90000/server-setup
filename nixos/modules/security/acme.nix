@@ -1,3 +1,23 @@
+# -------------------------------------------------------------------------
+# acme.nix — Gestion des certificats TLS via ACME (Let's Encrypt)
+#
+# Configure un émetteur ACME sur le noeud taggé `acme-issuer` et un
+# mécanisme de synchronisation rsync des certificats vers les autres
+# noeuds via l'utilisateur `cert-syncer`.
+#
+# Options :
+#   - infra.acme.email              : email de contact Let's Encrypt
+#   - infra.acme.domains            : liste des domaines à certifier
+#   - infra.acme.dnsProvider        : fournisseur DNS (fallback global)
+#   - infra.acme.dnsCredentials     : credentials DNS (env vars, secret)
+#   - infra.acme.certSyncerPrivateKey : clé privée SSH pour cert-syncer
+#   - infra.acme.certSyncerPublicKey  : clé publique SSH pour cert-syncer
+#
+# Si `acme-issuer` activé : exécute le challenge DNS, stocke les certs,
+#   autorise le compte cert-syncer à les lire via rrsync.
+# Sinon : planifie un timer systemd qui rsync les certificats depuis
+#   les noeuds taggés `acme-issuer`, avec fallback minica si échec.
+# -------------------------------------------------------------------------
 {
   config,
   pkgs,
@@ -10,14 +30,9 @@
 let
   cfg = config.infra.acme;
 
-  privateSSHKey = builtins.readFile ../../../.secrets/syncer.key;
-  publicSSHKey = builtins.readFile ../../../.secrets/syncer.key.pub;
-
   issuer = services.hasTag "acme-issuer";
 
   issuers = services.getHostsByTag "acme-issuer";
-
-  acmeConfig = (import ../../../config/acme/acme.nix);
 
   getVal = local: global: if local != null then local else global;
 in
@@ -26,29 +41,61 @@ in
     email = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
+      description = "Adresse email utilisée pour l'enregistrement Let's Encrypt.";
     };
 
     domains = lib.mkOption {
       default = [ ];
+      description = "Liste des domaines pour lesquels générer des certificats TLS.";
       type = lib.types.listOf (
         lib.types.submodule {
           options = {
-            domain = lib.mkOption { type = lib.types.str; };
+            domain = lib.mkOption {
+              type = lib.types.str;
+              description = "Nom de domaine (ex: example.com, *.example.com).";
+            };
             dnsProvider = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;
+              description = "Override du fournisseur DNS pour ce domaine spécifique.";
             };
             credentialsFile = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;
+              description = "Override du fichier de credentials DNS pour ce domaine.";
             };
           };
         }
       );
     };
+
+    dnsProvider = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Fournisseur DNS pour le challenge ACME (ex: ovh, cloudflare).";
+    };
+
+    dnsCredentials = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Variables d'environnement pour l'authentification au provider DNS.";
+    };
+
+    certSyncerPrivateKey = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Clé privée SSH de l'utilisateur cert-syncer (pour rsync des certificats).";
+    };
+
+    certSyncerPublicKey = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Clé publique SSH de l'utilisateur cert-syncer (pour authorized_keys).";
+    };
   };
 
   config = lib.mkMerge [
+    { infra.registeredTags = [ "acme-issuer" ]; }
     (lib.mkIf (cfg.domains != [ ]) {
       users.groups.cert-syncer = { };
 
@@ -63,46 +110,33 @@ in
       users.groups.acme = { };
     })
     (lib.mkIf (issuer && cfg.domains != [ ]) {
-      deployment.keys = ops.mkSecretKeys "acme" acmeConfig [ "dnsCredentials" ];
+      deployment.keys = ops.mkSecretKeys "acme" cfg [ "dnsCredentials" ];
 
       users.users.cert-syncer = {
         isNormalUser = true;
-        # Pas de shell interactif, c'est un compte de service
-        # shell = "${pkgs.shadow}/bin/nologin";
-        # On force le groupe pour que les fichiers ACME lui appartiennent
         group = "cert-syncer";
-        # On revient à la méthode standard
-        openssh.authorizedKeys.keys = [
-          ''command="${pkgs.rrsync}/bin/rrsync -ro /var/lib/acme/",restrict ${publicSSHKey}''
+        openssh.authorizedKeys.keys = lib.mkIf (cfg.certSyncerPublicKey != null) [
+          ''command="${pkgs.rrsync}/bin/rrsync -ro /var/lib/acme/",restrict ${cfg.certSyncerPublicKey}''
         ];
-        #openssh.authorizedKeys.keys = [ "/var/lib/secrets/common-key.pub" ];
       };
 
-      # 2. Configuration SSHD (Côté Serveur)
       services.openssh.extraConfig = ''
         Match User cert-syncer
-            # On interdit tout sauf l'authentification par clé
             PasswordAuthentication no
             PubkeyAuthentication yes
-
-            # AuthorizedKeysFile /var/lib/secrets/common-key.pub
-            # Optionnel : Restreindre aux commandes rsync (plus complexe à setup, on laisse ouvert pour l'instant)
-            # ForceCommand ${pkgs.rrsync}/bin/rrsync /var/lib/acme/
       '';
 
-      # 3. Configuration ACME
       security.acme = {
         acceptTerms = true;
-        defaults.email = getVal cfg.email acmeConfig.email;
+        defaults.email = getVal cfg.email cfg.email;
 
         certs = lib.listToAttrs (
           map (certOpts: {
             name = lib.replaceStrings [ "*" ] [ "_" ] certOpts.domain;
             value = {
-              dnsProvider = getVal certOpts.dnsProvider acmeConfig.dnsProvider;
+              dnsProvider = getVal certOpts.dnsProvider cfg.dnsProvider;
               credentialsFile = getVal certOpts.credentialsFile "/var/lib/secrets/acme/dnsCredentials";
 
-              # C'est l'utilisateur cert-syncer qui sera propriétaire des fichiers !
               group = "cert-syncer";
 
               reloadServices = lib.optional (lib.hasAttr "nginx" config.services) "nginx";
@@ -112,18 +146,15 @@ in
                   (lib.removePrefix "*." certOpts.domain)
                 else
                   certOpts.domain;
-              # Logique wildcard
               extraDomainNames = lib.optional (lib.hasPrefix "*." certOpts.domain) (certOpts.domain);
             };
           }) cfg.domains
         );
       };
-
-      # profile.backup.paths = [ "/var/lib/acme" ];
     })
     (lib.mkIf (!issuer && cfg.domains != [ ] && issuers != [ ]) {
-      deployment.keys."syncer.key" = {
-        text = privateSSHKey;
+      deployment.keys."syncer.key" = lib.mkIf (cfg.certSyncerPrivateKey != null) {
+        text = cfg.certSyncerPrivateKey;
         destDir = "/var/lib/secrets";
         user = "root";
         group = "root";
@@ -182,7 +213,7 @@ in
           # flock va attendre (bloquer) tant que le fichier est verrouillé par un autre processus
           if flock 9; then
               echo "Lock acquired. Starting sync for $DOMAIN."
-              
+
               # On tente la synchro
               if do_sync; then
                   echo "Sync done."
@@ -238,7 +269,6 @@ in
           OnBootSec = "1m";
           OnCalendar = "02:00:00";
           Persistent = true;
-          # RandomizedDelaySec = "10m";
         };
       };
 

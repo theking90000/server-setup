@@ -1,27 +1,22 @@
-{ lib, ... }:
-
-let
-  dir = ./.;
-  entries = builtins.readDir dir;
-
-  # Fonction utilitaire pour construire le chemin
-  mkPath = name: dir + "/${name}";
-
-  filter =
-    name: type:
-    let
-      path = mkPath name;
-      isNixFile = type == "regular" && lib.hasSuffix ".nix" name && name != "default.nix";
-      # On n'importe le dossier QUE s'il contient un default.nix (sinon error)
-      isDirWithDefault = type == "directory" && builtins.pathExists (path + "/default.nix");
-    in
-    isNixFile || isDirWithDefault;
-
-  validFiles = lib.filterAttrs filter entries;
-
-  # Transformation en liste de chemins
-  paths = map (name: mkPath name) (builtins.attrNames validFiles);
-in
+# -------------------------------------------------------------------------
+# applications/default.nix — Modules applicatifs
+#
+# Liste explicite des modules applicatifs disponibles.
+# Chaque module s'active via un tag correspondant dans `infra.nodes`.
+#
+# Modules :
+#   - docker-registry   : registre Docker privé (tag: applications/docker-registry)
+#   - filesave           : serveur de partage de fichiers (tag: applications/filesave-server)
+#   - gitea              : serveur Git auto-hébergé (tag: applications/gitea)
+#   - ntfy               : serveur de notifications push (tag: applications/ntfy)
+#   - reposilite         : gestionnaire de dépôts Maven (tag: applications/reposilite)
+# -------------------------------------------------------------------------
 {
-  imports = paths;
+  imports = [
+    ./docker-registry.nix
+    ./filesave.nix
+    ./gitea.nix
+    ./ntfy.nix
+    ./reposilite.nix
+  ];
 }

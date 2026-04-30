@@ -1,38 +1,36 @@
-# network.nix
+# -------------------------------------------------------------------------
+# network.nix — Configuration réseau de base du noeud
 #
-# Ce fichier définit la configuration réseau pour un nœud NixOS.
-# Les paramètres réseau sont personnalisés selon les données fournies.
+# Configure le hostname, l'interface ens3 (DHCP IPv4 + IPv6 statique OVH),
+# active nftables et le sysctl ip_nonlocal_bind pour le proxy transparent.
 #
+# Les paramètres sont lus depuis `infra.nodes.<nom>.{ipv6,ipv6_gateway}`.
+# -------------------------------------------------------------------------
+{ config, lib, ... }:
 
-{ name, data, ... }:
+let
+  nodeName = config.infra.nodeName;
+  node = config.infra.nodes.${nodeName};
+in
 {
   networking = {
-    hostName = name;
+    hostName = nodeName;
 
-    # Utilisation de nftables pour la gestion des pare-feux
     nftables.enable = true;
 
-    # Configuration de l'interface réseau ens3
-    # (convention chez OVH pour les VPS)
     interfaces.ens3 = {
-
-      # Utilisation du DHCP pour l'IPV4
       useDHCP = true;
 
-      # Configuration de l'adresse IPv6 statique
-      # en utilisant les informations OVH
-      ipv6.addresses = [
+      ipv6.addresses = lib.mkIf (node.ipv6 or null != null) [
         {
-          address = data.ipv6;
+          address = node.ipv6;
           prefixLength = 128;
         }
       ];
     };
 
-    # Configuration de la passerelle IPv6 par défaut
-    # en utilisant les informations OVH
-    defaultGateway6 = {
-      address = data.ipv6_gateway;
+    defaultGateway6 = lib.mkIf (node.ipv6_gateway or null != null) {
+      address = node.ipv6_gateway;
       interface = "ens3";
     };
   };

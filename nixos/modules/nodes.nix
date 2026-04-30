@@ -1,3 +1,21 @@
+# -------------------------------------------------------------------------
+# nodes.nix — Infrastructure inventory & node identity
+#
+# Déclare les options fondamentales de l'infrastructure :
+#   - infra.registeredTags   : liste auto-déclarée des tags connus (par les modules importés)
+#   - infra.nodeName         : nom du noeud courant (défini par Colmena)
+#   - infra.nodes            : inventaire complet des noeuds (topologie)
+#
+# Chaque noeud de l'inventaire possède les champs :
+#   - publicIp, vpnIp, ipv6, ipv6_gateway
+#   - user, sshKey           : pour le déploiement SSH
+#   - wireguardPublicKey     : clé publique WireGuard (générée par scripts/generate-mesh.sh)
+#   - sshPublicKey           : clé publique SSH pour root authorized_keys
+#   - tags                   : liste des tags activés sur ce noeud
+#
+# Vérifie à l'évaluation que tous les tags utilisés sont bien déclarés
+# par un module importé (via infra.registeredTags).
+# -------------------------------------------------------------------------
 { lib, config, ... }:
 {
   options.infra.registeredTags = lib.mkOption {
@@ -58,6 +76,20 @@
               description = "Chemin de la clé SSH privée utilisée pour se connecter.";
             };
 
+            wireguardPublicKey = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Clé publique WireGuard du noeud. Générée par scripts/generate-mesh.sh.";
+              example = "RepSHS/GGSefxJ+IbYxaPJd2XLqMFp+lfV8RAXP7fT0=";
+            };
+
+            sshPublicKey = lib.mkOption {
+              type = lib.types.nullOr lib.types.str;
+              default = null;
+              description = "Clé publique SSH à ajouter aux authorized_keys de root.";
+              example = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...";
+            };
+
             tags = lib.mkOption {
               type = lib.types.listOf lib.types.str;
               default = [ ];
@@ -77,6 +109,8 @@
           vpnIp = "10.100.0.1";
           ipv6 = "2001:3130:3132:2100::a38c";
           ipv6_gateway = "2001:3130:3132:2100::1";
+          wireguardPublicKey = "RepSHS/GGSefxJ+IbYxaPJd2XLqMFp+lfV8RAXP7fT0=";
+          sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...";
         };
       }
     '';
@@ -93,6 +127,6 @@
           Maybe a typo?
         '';
       }) node.tags
-    ) config.infra.topology.nodes
+    ) config.infra.nodes
   );
 }

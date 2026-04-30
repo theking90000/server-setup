@@ -1,4 +1,14 @@
+# -------------------------------------------------------------------------
+# reposilite.nix — Gestionnaire de dépôts Maven
+#
+# Déploie Reposilite écoutant sur l'IP VPN (port 5002) avec les plugins
+# checksum et prometheus. Si une URL publique est configurée, déclare
+# automatiquement les ACLs, l'ingress Nginx et la télémétrie.
+#
+# Tags requis : `applications/reposilite`
+# -------------------------------------------------------------------------
 {
+  config,
   services,
   lib,
   pkgs,
@@ -6,18 +16,22 @@
 }:
 
 let
-  cfg = import ../../../config/reposilite/reposilite.nix;
-
   tag = "applications/reposilite";
   port = 5002;
-
   enabled = services.hasTag tag;
 in
 {
-  config = lib.mkMerge [
-    (lib.mkIf enabled {
-      # deployment.keys = ops.mkSecretKeys "reposilite" cfg [ "accounts" ];
+  options.infra.reposilite = {
+    url = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "URL publique de l'instance Reposilite (ex: https://repo.example.com).";
+    };
+  };
 
+  config = lib.mkMerge [
+    { infra.registeredTags = [ tag ]; }
+    (lib.mkIf enabled {
       services.reposilite = {
         enable = true;
         workingDirectory = "/var/lib/reposilite";
@@ -42,7 +56,6 @@ in
 
       infra.backup.paths = [ "/var/lib/reposilite" ];
 
-      # Ouverture du port pour Reposilite
       infra.security.acls = [
         {
           port = port;
@@ -56,25 +69,19 @@ in
 
     })
     {
-
       infra.telemetry."reposilite" = map (host: {
         targets = [ "${host}:${toString port}" ];
         labels = {
           host = host;
         };
       }) (services.getHostsByTag tag);
-
     }
-
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
-
+    (lib.mkIf (config.infra.reposilite.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."reposilite" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
+        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.reposilite.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
-
         blockPaths = [ "/metrics" ];
       };
-
     })
   ];
 }

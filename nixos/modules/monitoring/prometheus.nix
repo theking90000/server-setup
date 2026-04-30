@@ -29,6 +29,7 @@ in
   };
 
   config = lib.mkMerge [
+    { infra.registeredTags = [ "prometheus" ]; }
     (lib.mkIf enabled {
       services.prometheus = {
         enable = true;
