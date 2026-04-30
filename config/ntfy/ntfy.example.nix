@@ -1,7 +1,6 @@
 {
-  # URL
-  url = "https://ntfy.example.com";
-
-  # URL d'upstream pour les notifications Push
-  upstream-base-url = "https://ntfy.sh";
+  infra.ntfy = {
+    url = "https://ntfy.example.com";
+    upstream-base-url = "https://ntfy.sh";
+  };
 }
