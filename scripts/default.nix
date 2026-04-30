@@ -1,5 +1,11 @@
 { pkgs }:
 
+let
+  templateFiles = builtins.path {
+    path = ../template;
+    name = "server-setup-template";
+  };
+in
 {
   infect = pkgs.writeShellApplication {
     name = "infect-server";
@@ -48,5 +54,61 @@
       pkgs.coreutils
     ];
     text = builtins.readFile ./generate-mesh.sh;
+  };
+
+  bootstrap-project = pkgs.writeShellApplication {
+    name = "bootstrap-project";
+    runtimeInputs = [
+      pkgs.rsync
+      pkgs.git
+    ];
+    text = ''
+      set -euo pipefail
+
+      if [ $# -lt 1 ]; then
+        echo "Usage: bootstrap-project <target-directory>"
+        echo ""
+        echo "  Creates a new private deployment repo from the server-setup template."
+        echo "  The <target-directory> must not exist or must be empty."
+        echo ""
+        echo "  After creation:"
+        echo "    1. cd <target-directory>"
+        echo "    2. Edit inventory/nodes.nix — set IPs, tags and SSH key path"
+        echo "    3. Edit config/*.nix — set URLs, credentials (search for CHANGEME)"
+        echo "    4. nix develop"
+        echo "    5. Run './scripts/infect.sh' for each VPS"
+        echo "    6. just deploy"
+        exit 1
+      fi
+
+      TARGET=$(realpath "$1")
+      TEMPLATE_DIR="${templateFiles}"
+
+      if [ -d "$TARGET" ] && [ "$(ls -A "$TARGET" 2>/dev/null)" ]; then
+        echo "Error: target directory '$TARGET' exists and is not empty."
+        exit 1
+      fi
+
+      echo "Creating deployment repo in $TARGET ..."
+      mkdir -p "$TARGET"
+
+      rsync -a "$TEMPLATE_DIR/" "$TARGET/"
+
+      cd "$TARGET"
+      git init
+      git add -A
+      git commit -m "Initial commit from server-setup template" --no-verify
+
+      echo ""
+      echo "Done! Repository created at $TARGET"
+      echo ""
+      echo "Next steps:"
+      echo "  1. Edit inventory/nodes.nix — replace all CHANGEME values"
+      echo "  2. Edit config/ files — replace all CHANGEME values"
+      echo "  3. nix develop"
+      echo "  4. Run './scripts/infect.sh -i <ssh-key> <user>@<ip>' for each VPS"
+      echo "  5. just deploy             # full deployment"
+      echo "  6. just deploy --on vps1   # single node"
+    '';
   };
 }

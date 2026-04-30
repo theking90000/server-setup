@@ -1,0 +1,30 @@
+# justfile
+
+# Liste les commandes par défaut
+default:
+    @just --list
+
+# Met à jour la librairie publique vers le dernier commit
+update-lib:
+    nix flake update infra
+
+# Génère la configuration Wireguard
+generate-mesh:
+    @echo "Génération du réseau Mesh..."
+    generate-mesh
+
+# Télécharge les configurations matérielles des VPS
+adopt-hardware:
+    @echo "Récupération de la configuration matérielle..."
+    adopt-hardware
+
+# Exporte les clés SSH pour le cert-syncer
+export-keys:
+    @echo "Exportation des clés SSH..."
+    export-ssh-key
+    generate-key
+
+# La commande ultime : prépare tout et déploie
+deploy target="": generate-mesh adopt-hardware export-keys
+    @echo "Lancement de Colmena..."
+    colmena apply {{ if target == "" { "" } else { "--on " + target } }}
