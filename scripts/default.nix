@@ -81,18 +81,18 @@ in
         exit 1
       fi
 
-      TARGET=$(realpath "$1")
-      TEMPLATE_DIR="${templateFiles}"
-
-      if [ -d "$TARGET" ] && [ "$(ls -A "$TARGET" 2>/dev/null)" ]; then
-        echo "Error: target directory '$TARGET' exists and is not empty."
+      if [ -d "$1" ] && [ "$(ls -A "$1" 2>/dev/null)" ]; then
+        echo "Error: target directory '$1' exists and is not empty."
         exit 1
       fi
 
-      echo "Creating deployment repo in $TARGET ..."
-      mkdir -p "$TARGET"
+      echo "Creating deployment repo in $1 ..."
+      mkdir -p "$1"
+      TARGET=$(cd "$1" && pwd)
+      TEMPLATE_DIR="${templateFiles}"
 
       rsync -a "$TEMPLATE_DIR/" "$TARGET/"
+      chmod -R u+w "$TARGET"
 
       cd "$TARGET"
       git init
