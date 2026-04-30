@@ -97,7 +97,7 @@ in
     })
     (lib.mkIf (config.infra.dockerRegistry.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."docker-registry" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.dockerRegistry.url;
+        url = config.infra.dockerRegistry.url;
         backend = map (ip: "${ip}:5000") (services.getVpnIpsByTag tag);
       };
     })

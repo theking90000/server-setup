@@ -132,7 +132,7 @@ in
       ];
 
       infra.ingress."grafana" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.grafana.url;
+        url = config.infra.grafana.url;
         backend = map (ip: "${ip}:3000") (services.getVpnIpsByTag "grafana");
       };
     })

@@ -89,7 +89,7 @@ in
     })
     (lib.mkIf (config.infra.filesave.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."filesave-server" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.filesave.url;
+        url = config.infra.filesave.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
       };
     })

@@ -80,7 +80,7 @@ in
     }
     (lib.mkIf (config.infra.ntfy.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."ntfy" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.ntfy.url;
+        url = config.infra.ntfy.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
         blockPaths = [ "/metrics" ];
       };

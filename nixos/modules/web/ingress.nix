@@ -1,14 +1,40 @@
+# -------------------------------------------------------------------------
+# ingress.nix — Abstraction ingress (reverse proxy)
+#
+# Déclare l'option `infra.ingress` : chaque entrée peut définir une URL
+# complète (https://exemple.com/app) ou un domaine (+ chemin optionnel).
+# L'URL est prioritaire : le module nginx parse automatiquement le domaine
+# et le chemin à partir de l'URL.
+#
+# Support multi-domaine par chemins : plusieurs entrées peuvent partager
+# le même domaine en spécifiant des chemins différents.
+# -------------------------------------------------------------------------
 { lib, ... }:
 
 let
   types = lib.types;
 
-  # Définition de la structure de chaque "site"
   ingressSubmodule = types.submodule {
     options = {
+      url = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = ''
+          URL publique complète (ex: https://exemple.com/app).
+          Prioritaire sur domain+path : le domaine et le chemin sont extraits automatiquement.
+        '';
+      };
+
       domain = lib.mkOption {
-        type = types.str;
-        description = "Le domaine public (ex: grafana.monsite.com)";
+        type = types.nullOr types.str;
+        default = null;
+        description = "Domaine public (ex: exemple.com). Ignoré si url est défini.";
+      };
+
+      path = lib.mkOption {
+        type = types.nullOr types.str;
+        default = null;
+        description = "Chemin sous le domaine (ex: /app). null = racine /. Ignoré si url est défini.";
       };
 
       backend = lib.mkOption {
@@ -27,13 +53,11 @@ let
         default = [ ];
         description = "Liste de chemins à bloquer (ex: ['/admin', '/metrics'])";
       };
-
     };
   };
 
 in
 {
-
   options.infra.ingress = lib.mkOption {
     type = types.attrsOf ingressSubmodule;
     default = { };

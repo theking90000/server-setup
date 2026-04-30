@@ -160,7 +160,7 @@ in
     # --- Ingress (global: only if URL is set and at least one host has the tag) ---
     (lib.mkIf (config.infra.sncb-insights.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."sncb-insights" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.sncb-insights.url;
+        url = config.infra.sncb-insights.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
       };
     })

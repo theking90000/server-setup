@@ -82,7 +82,7 @@ in
     }
     (lib.mkIf (config.infra.gitea.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."gitea" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.gitea.url;
+        url = config.infra.gitea.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
         blockPaths = [ "/metrics" ];
       };

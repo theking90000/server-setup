@@ -78,7 +78,7 @@ in
     }
     (lib.mkIf (config.infra.reposilite.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."reposilite" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] config.infra.reposilite.url;
+        url = config.infra.reposilite.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
         blockPaths = [ "/metrics" ];
       };
