@@ -102,10 +102,10 @@ in
   # ── Config ───────────────────────────────────────────────────────────
   config = lib.mkMerge [
 
-    # Tier 1 — Always: register the tag
+    # Tier 1 — Always: register the tag (global, no guard)
     { infra.registeredTags = [ tag ]; }
 
-    # Tier 2 — Service present on this node
+    # Tier 2 — Per-node: service activation, ACLs, backup (local)
     (lib.mkIf enabled {
       systemd.services.myapp = { ... };
       infra.backup.paths = [ "/var/lib/myapp" ];
@@ -116,7 +116,7 @@ in
       } ];
     })
 
-    # Tier 3 — Public ingress (only if url is set AND backends exist)
+    # Tier 3 — Global: public ingress (any node can register)
     (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."myapp" = {
         domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
@@ -125,13 +125,18 @@ in
       };
     })
 
-    # Tier 4 — Telemetry (always; empty list when no nodes have the tag)
+    # Tier 4 — Global: telemetry, always; empty list when no nodes tagged
     {
       infra.telemetry."myapp" = map (host: {
         targets = [ "${host}:8080" ];
         labels = { job = "myapp"; };
       }) (services.getHostsByTag tag);
     }
+
+    # Tier 5 — Global: dashboard, guarded on ANY node having the tag
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/myapp.json ];
+    })
   ];
 }
 ```
@@ -367,6 +372,109 @@ services.grafana.provision.datasources.settings.datasources = [ ... ];
 ```
 
 This is the same mechanism used by the Prometheus module to self-register.
+
+---
+
+## 7b. Cross-Node Side Effects — Global vs Per-Node Guards
+
+### The fundamental concept
+
+NixOS modules are **evaluated once per node**, but **all options are global**.
+`config.infra.*` holds the same value regardless of which node's evaluation
+you're in. This means a module evaluated on vps1 can populate options that
+only vps2 reads:
+
+```
+Module "nginx.nix" on vps1    →  populates infra.telemetry."nginx"
+Module "nginx.nix" on vps2    →  populates infra.telemetry."nginx"
+                               ↓  (both merged into one list)
+Module "prometheus.nix" on vps3 → reads infra.telemetry (sees both)
+```
+
+### Two types of guards
+
+Because some options produce **side effects for other nodes**, there are two
+fundamentally different conditional patterns:
+
+| Guard                              | Meaning                                      | When to use                                     |
+|------------------------------------|----------------------------------------------|-------------------------------------------------|
+| `lib.mkIf (services.hasTag tag)`   | True only if THIS node has the tag           | Service activation, deployment, local config     |
+| No guard / `services.getHostsByTag tag != []` | True if ANY node has the tag | Telemetry, dashboards, anything another node consumes |
+
+### Per-node guard: local service activation
+
+Use `services.hasTag tag` (or `enabled`) for anything that only affects
+the CURRENT node:
+
+```nix
+(lib.mkIf enabled {
+  services.myapp = { ... };           # deploy on this node only
+  infra.backup.paths = [ "/var/lib/myapp" ];   # backup this node's data
+  infra.security.acls = [ { ... } ];           # firewall on this node
+})
+```
+
+### Global guard (or none): side effects for other nodes
+
+For options that **other nodes consume**, use either no guard or the global
+guard `services.getHostsByTag tag != []`:
+
+```nix
+# No guard — always runs. If tag isn't on any node, getHostsByTag returns [].
+{
+  infra.telemetry."myapp" = map (host: {
+    targets = [ "${host}:8080/metrics" ];
+  }) (services.getHostsByTag tag);
+}
+
+# Global guard — only registers if at least one node has the tag.
+# This prevents registering dashboards for services that aren't deployed.
+(lib.mkIf (services.getHostsByTag tag != [ ]) {
+  infra.grafana.dashboards = [ ./dashboards/myapp.json ];
+})
+```
+
+### Why telemetry is always unconditional
+
+Telemetry uses no guard. The reason: `services.getHostsByTag` returns `[]`
+when no node has the tag, so `map` produces an empty list. The Prometheus
+module sees an empty scrape config — it's harmless. The `mkIf` buys nothing
+and adds complexity.
+
+### Why ingress uses a two-part guard
+
+Ingress uses the current node's tag AND configuration:
+
+```nix
+(lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) { ... })
+```
+
+This is correct because:
+- `cfg.url != null` — the URL must be configured in the private repo
+- `services.getVpnIpsByTag tag != []` — at least one backend must exist
+
+These are both global conditions (url comes from private config, which is
+shared across all nodes; getVpnIpsByTag returns all nodes with the tag).
+
+### Summary: which guard for which option
+
+| Option                   | Guard                                            | Rationale                                   |
+|--------------------------|--------------------------------------------------|---------------------------------------------|
+| `infra.registeredTags`   | None (always)                                    | Tag must be known even if unused            |
+| Service activation       | `lib.mkIf enabled`                               | Only deploy on nodes with the tag           |
+| `infra.backup.paths`     | `lib.mkIf enabled`                               | Only backup nodes with running services     |
+| `infra.security.acls`    | `lib.mkIf enabled`                               | Only open ports on nodes running services   |
+| `infra.ingress`          | `lib.mkIf (cfg.url != null && getVpnIpsByTag != [])` | Needs URL + at least one backend       |
+| `infra.telemetry`        | None (always)                                    | Harmless empty list when no nodes tagged    |
+| `infra.grafana.dashboards` | `lib.mkIf (getHostsByTag != [])`               | Don't provision unused dashboards           |
+| `deployment.keys`        | `lib.mkIf enabled`                               | Only deploy secrets to nodes needing them   |
+
+### The golden rule
+
+**Ask yourself: who reads this option?** If the answer is "another node" or
+"another module that may run on a different node", you probably need a global
+guard (or no guard at all). If the answer is "only this node's services",
+use the per-node `enabled` guard.
 
 ---
 
