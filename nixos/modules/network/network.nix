@@ -13,7 +13,7 @@ let
   node = config.infra.nodes.${nodeName};
 in
 {
-  time.timeZone = "Europe/Paris";
+  time.timeZone = node.timezone or "Europe/Paris";
 
   networking = {
     hostName = nodeName;

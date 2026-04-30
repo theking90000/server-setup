@@ -95,6 +95,12 @@
               default = [ ];
               description = "Liste des tags à appliquer sur ce noeud.";
             };
+
+            timezone = lib.mkOption {
+              type = lib.types.str;
+              default = "Europe/Paris";
+              description = "Fuseau horaire du noeud.";
+            };
           };
         }
       )
