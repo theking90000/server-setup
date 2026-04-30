@@ -1,8 +1,43 @@
 # Server Setup
 
-Automatisation de serveurs NixOS avec [Colmena](https://github.com/zhaofengli/colmena).
+Automatisation complète d'une infrastructure de serveurs avec **NixOS** et
+[Colmena](https://github.com/zhaofengli/colmena).
 
-Cible : VPS OVH provisionnés en Debian 11, infectés avec NixOS.
+Ce projet permet de gérer une flotte de VPS comme un seul système cohérent :
+les services se découvrent automatiquement entre les nœuds via le réseau VPN
+WireGuard, les ACLs firewall sont générées à partir des tags, les dashboards
+Grafana et les cibles Prometheus s'enregistrent dynamiquement. Chaque module
+sait quels autres nœuds existent au moment du build — pas de configuration
+manuelle des IPs entre services.
+
+### NixOS ?
+
+[NixOS](https://nixos.org) est une distribution Linux déclarative : toute la
+configuration (paquets, services, utilisateurs, firewall, réseau) est décrite
+dans des fichiers `.nix`. Le système est immuable — chaque déploiement produit
+un nouvel état reproductible. Pas de mutation progressive de `/etc`, pas de
+`apt-get install` oublié. Si ça marche aujourd'hui, ça marchera demain.
+
+### Colmena ?
+
+[Colmena](https://github.com/zhaofengli/colmena) est un orchestrateur de
+déploiement NixOS multi-nœuds. Il évalue la configuration de chaque nœud
+**en ayant connaissance de tous les autres**, ce qui permet de générer des
+règles réseau, des configs WireGuard et des ACLs inter-nœuds automatiquement.
+Il déploie via SSH, en parallèle, avec rollback automatique en cas d'échec.
+
+### Cibles matérielles
+
+VPS [OVH](https://www.ovh.com) provisionnés initialement sous **Debian 11**,
+puis infectés avec NixOS via le script `infect-server`. N'importe quel VPS
+sous Debian 11 (ou 12) fonctionne — les configs hardware sont téléchargées
+automatiquement après infection.
+
+### Prérequis
+
+- **Nix** installé sur ta machine locale ([déterministe Nix](https://determinate.systems/nix-installer/) recommandé)
+- Une clé SSH configurée (`~/.ssh/id_ed25519`)
+- Un ou plusieurs VPS Debian 11 accessibles en SSH (port 22)
 
 ## Architecture deux dépôts
 
