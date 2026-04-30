@@ -156,5 +156,8 @@ in
       }) (services.getHostsByTag TAG);
 
     }
+    (lib.mkIf (services.getHostsByTag TAG != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/nginx-vts.json ];
+    })
   ];
 }

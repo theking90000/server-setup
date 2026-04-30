@@ -83,5 +83,8 @@ in
         blockPaths = [ "/metrics" ];
       };
     })
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/reposilite.json ];
+    })
   ];
 }

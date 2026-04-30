@@ -4,14 +4,17 @@
 # Déploie Grafana écoutant sur l'IP VPN (port 3000), configuré avec
 # les datasources Prometheus auto-découvertes via le tag `prometheus`.
 #
-# Si une URL publique est définie, déclare automatiquement les ACLs
-# et l'ingress Nginx pour l'exposer.
+# Les dashboards sont déclarés dynamiquement par chaque module via
+# l'option `infra.grafana.dashboards` (liste de chemins vers des JSON).
+# Tous les dashboards sont regroupés via pkgs.linkFarm dans un seul
+# répertoire provisionné dans Grafana.
 #
 # Tags requis : `grafana`
 # Secrets     : `infra.grafana.{password, grafana_secret}` (Colmena)
 # -------------------------------------------------------------------------
 {
   config,
+  pkgs,
   lib,
   services,
   ops,
@@ -20,6 +23,13 @@
 
 let
   enabled = services.hasTag "grafana";
+
+  dashboardsDir = pkgs.linkFarm "grafana-dashboards" (
+    lib.imap0 (i: path: {
+      name = "d${builtins.toString i}-${builtins.baseNameOf path}";
+      path = path;
+    }) config.infra.grafana.dashboards
+  );
 in
 {
   options.infra.grafana = {
@@ -45,6 +55,16 @@ in
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Clé secrète Grafana pour le chiffrement des sessions (secret, déployé via Colmena).";
+    };
+
+    dashboards = lib.mkOption {
+      type = lib.types.listOf lib.types.path;
+      default = [ ];
+      description = ''
+        Liste de chemins vers des fichiers JSON de dashboards Grafana.
+        Chaque module peut déclarer ses propres dashboards via cette option.
+        Les fichiers sont regroupés par linkFarm et provisionnés dans Grafana.
+      '';
     };
   };
 
@@ -85,7 +105,7 @@ in
         provision.dashboards.settings.providers = [
           {
             name = "Infrastructure";
-            options.path = ../../../config/grafana/dashboards;
+            options.path = dashboardsDir;
             recursive = true;
             checksum = true;
             options.foldersFromFilesStructure = true;

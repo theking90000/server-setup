@@ -46,5 +46,8 @@ in
         };
       }) (services.getHostsByTag "node-metrics");
     }
+    (lib.mkIf (services.getHostsByTag "node-metrics" != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/node-exporter.json ];
+    })
   ];
 }

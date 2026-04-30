@@ -56,8 +56,7 @@ To add a new application module:
      ];
    }
    ```
-3. **Declare user-configurable options** in the private repo (see §3)
-4. **Copy the example config** to `config/<name>/<name>.example.nix`
+3. **Declare user-configurable options** in the private repo (see §12)
 
 ---
 
@@ -336,7 +335,27 @@ has the tag, `getHostsByTag` returns `[]` and the resulting list is empty.
 The Prometheus module reads `config.infra.telemetry` globally and generates
 its scrape config from the aggregate.
 
-### 7.5 Grafana datasource auto-discovery
+### 7.5 Dashboards / Grafana (`infra.grafana.dashboards`)
+
+Register a JSON dashboard file for auto-provisioning in Grafana:
+
+```nix
+# Register unconditionally, guarded on GLOBAL tag presence
+# (any node having the tag, not just current node)
+(lib.mkIf (services.getHostsByTag tag != [ ]) {
+  infra.grafana.dashboards = [ ./dashboards/myapp.json ];
+})
+```
+
+The guard `services.getHostsByTag tag != [ ]` is global — true if ANY node has
+the tag. This ensures the dashboard is registered even when Grafana runs on a
+different node than the service itself.
+
+Store dashboard JSON files in `nixos/modules/<category>/dashboards/`. They are
+aggregated via `pkgs.linkFarm` on the Grafana node and provisioned with folder
+structure preserved.
+
+### 7.6 Grafana datasource auto-discovery
 
 If your module provides data that Prometheus scrapes, it doesn't need to
 register with Grafana — the Grafana module auto-discovers Prometheus
@@ -553,25 +572,36 @@ in
         labels = { host = host; };
       }) (services.getHostsByTag tag);
     }
+
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/myapp.json ];
+    })
   ];
 }
 ```
 
-And the corresponding example config file
-(`config/myapp/myapp.example.nix`, tracked in git):
+## 11. Private Repo Configuration
+
+Options declared by modules are set in the private repo (never in the public
+infra repo). The private flake imports these values into the Colmena evaluation:
 
 ```nix
+# private repo: inventory/config.nix
 {
   infra.myapp = {
     url = "https://myapp.example.com";
-    password = "";
+    password = "changeme";
   };
 }
 ```
 
+Secrets (password, api keys, etc.) are automatically deployed via Colmena's
+`deployment.keys` when passed through `ops.mkSecretKeys` (see §8).
+```
+
 ---
 
-## 11. Summary Checklist
+## 12. Summary Checklist
 
 For every new module:
 
@@ -587,7 +617,7 @@ For every new module:
 - [ ] `infra.backup.paths` for data directories
 - [ ] `infra.ingress."<name>"` conditional on url + backends
 - [ ] `infra.telemetry."<name>"` if the service exposes Prometheus metrics
+- [ ] `infra.grafana.dashboards` if a Grafana dashboard exists (global guard: `mkIf (services.getHostsByTag tag != [ ])`)
 - [ ] Secrets via `ops.mkSecretKeys` (never plain imports)
-- [ ] Create `config/<name>/<name>.example.nix` with placeholder values
 - [ ] Comment header describing purpose, tags, secrets
 - [ ] Verify: `nix flake check --all-systems`

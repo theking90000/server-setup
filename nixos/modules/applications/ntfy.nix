@@ -85,5 +85,8 @@ in
         blockPaths = [ "/metrics" ];
       };
     })
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/ntfy.json ];
+    })
   ];
 }

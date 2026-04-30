@@ -109,5 +109,8 @@ in
         };
       }) (services.getHostsByTag tag);
     }
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/docker-registry.json ];
+    })
   ];
 }

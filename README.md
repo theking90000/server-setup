@@ -113,10 +113,10 @@ colmena apply --on vps2
 | :------------- | :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `node-metrics` | Active l'exportation des métriques du nœud (CPU, RAM, disque, etc.) via Prometheus Node Exporter.                                                                                                            |
 | `prometheus`   | Déploie une instance Prometheus pour collecter et stocker les métriques provenant des autres nœuds (`node-metrics`).                                                                                         |
-| `grafana`      | Installe et configure Grafana pour visualiser les données collectées par Prometheus. (config : `config/grafana`)                                                                                             |
-| `acme-issuer`  | Désigne ce nœud comme responsable de la génération et du renouvellement des certificats SSL/TLS via ACME (Let's Encrypt). Configure ACME ainsi qu'un utilisateur SSH `cert-syncer`. (config : `config/acme`) |
+| `grafana`      | Installe et configure Grafana pour visualiser les données collectées par Prometheus.                                                                                                                     |
+| `acme-issuer`  | Désigne ce nœud comme responsable de la génération et du renouvellement des certificats SSL/TLS via ACME (Let's Encrypt). Configure ACME ainsi qu'un utilisateur SSH `cert-syncer`.                       |
 | `web-server`   | Configure un serveur web (Nginx) pour servir des applications. Écoute sur le port public 443.                                                                                                                |
-| `backup`       | Active les scripts et services de sauvegarde automatique (via restic). (config : `config/restic`)                                                                                                            |
+| `backup`       | Active les scripts et services de sauvegarde automatique (via restic).                                                                                                                                     |
 
 Par défaut, seul le port 22 (SSH) est ouvert sur la machine ; les autres ports peuvent être ouverts par d'autres tags.
 
@@ -124,14 +124,13 @@ La philosophie est d'exposer les applications sur le réseau VPN (WireGuard) au 
 
 ### Configuration des applications
 
-Certaines applications supportent des configurations externes. Chaque configuration est stockée dans le dossier `config/`.
-Pour utiliser une app ou une configuration, il faut renommer le fichier `.example.nix` correspondant en `.nix`. Les variables sensibles ne sont PAS stockées dans le `/nix/store`, mais utilisent Colmena pour être envoyées de manière sécurisée sur le serveur.
+Les options de configuration (URLs, credentials, etc.) sont déclarées comme options NixOS sous le namespace `infra.*`. Les valeurs sont définies dans le dépôt privé et les secrets sont déployés via Colmena (`deployment.keys`) sans jamais transiter par `/nix/store`.
 
 ### Applications (tags)
 
 | Nom                            | Description                                                                                                          |
 | :----------------------------- | :------------------------------------------------------------------------------------------------------------------- |
-| `applications/docker-registry` | Déploie un registre Docker pour stocker et gérer les images conteneurs. (config : `config/docker-registry`)          |
-| `applications/reposilite`      | Installe un gestionnaire de dépôts Maven compatible pour héberger des artefacts Java. (config : `config/reposilite`) |
-| `applications/gitea`           | Déploie un serveur Gitea (config `config/gitea`)                                                                     |
-| `applications/ntfy`            | Déploie un serveur ntfy pour les notifications push (config `config/ntfy`)                                           |
+| `applications/docker-registry` | Déploie un registre Docker pour stocker et gérer les images conteneurs.                    |
+| `applications/reposilite`      | Installe un gestionnaire de dépôts Maven compatible pour héberger des artefacts Java.      |
+| `applications/gitea`           | Déploie un serveur Gitea                                                                    |
+| `applications/ntfy`            | Déploie un serveur ntfy pour les notifications push                                        |
