@@ -112,8 +112,8 @@ in
         wantedBy = [ "multi-user.target" ];
 
         serviceConfig = {
-          ExecStart = "${pkgs.nginx}/bin/nginx -c ${nginxConfig}";
-          ExecReload = "${pkgs.nginx}/bin/nginx -s reload -c ${nginxConfig}";
+          ExecStart = "${pkgs.nginx}/bin/nginx -g 'error_log stderr;' -c ${nginxConfig}";
+          ExecReload = "${pkgs.nginx}/bin/nginx -g 'error_log stderr;' -s reload -c ${nginxConfig}";
           RuntimeDirectory = "www";
           User = "www-data";
           Group = "www-data";
