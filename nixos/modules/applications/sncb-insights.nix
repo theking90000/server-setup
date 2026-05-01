@@ -89,6 +89,8 @@ in
       };
 
       users.groups.sncb-insights = { };
+
+      infra.backup.paths = [ dataDir ];
     })
 
     # --- Wake timer (all nodes with the tag) ---
@@ -153,8 +155,6 @@ in
           description = "SNCB Insights";
         }
       ];
-
-      infra.backup.paths = [ dataDir ];
     })
 
     # --- Ingress (global: only if URL is set and at least one host has the tag) ---
