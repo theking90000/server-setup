@@ -8,5 +8,6 @@
     ./ntfy/ntfy.nix
     ./reposilite/reposilite.nix
     ./restic/restic.nix
+    ./www/www.nix
   ];
 }

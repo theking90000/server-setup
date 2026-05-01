@@ -11,6 +11,7 @@
 #   - ntfy               : serveur de notifications push (tag: applications/ntfy)
 #   - reposilite         : gestionnaire de dépôts Maven (tag: applications/reposilite)
 #   - sncb-insights      : scraping des données de la SNCB (tag: applications/sncb-insights)
+#   - www                : serveur de fichiers statiques (tag: applications/www)
 # -------------------------------------------------------------------------
 {
   imports = [
@@ -20,5 +21,6 @@
     ./ntfy.nix
     ./reposilite.nix
     ./sncb-insights.nix
+    ./www.nix
   ];
 }

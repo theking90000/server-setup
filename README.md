@@ -82,6 +82,7 @@ Une fois configuré, le projet déploie une infrastructure complète :
 | **Ntfy**     | Serveur de notifications push avec métriques. |
 | **Reposilite** | Gestionnaire de dépôts Maven avec métriques. |
 | **FileSave** | Serveur d'hébergement de fichiers. |
+| **www**     | Serveur de fichiers statiques avec paquet Nix optionnel. |
 
 Le tout est orchestré par **Colmena** : un seul `just deploy` suffit pour
 construire et déployer l'intégralité de la configuration sur tous les nœuds
@@ -211,7 +212,7 @@ privé, et référencez-les dans vos modules via `pkgs.callPackage`.
 │   ├── modules/           ← modules NixOS
 │   │   ├── default.nix
 │   │   ├── nodes.nix
-│   │   ├── applications/  ← docker-registry, gitea, ntfy, reposilite, filesave
+│   │   ├── applications/  ← docker-registry, gitea, ntfy, reposilite, filesave, www
 │   │   ├── backup/        ← restic
 │   │   ├── monitoring/    ← node-metrics, prometheus, grafana
 │   │   ├── web/           ← nginx + ingress
