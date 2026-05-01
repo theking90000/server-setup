@@ -241,6 +241,15 @@ in
             mv "$DOMAIN/key.pem" "/var/lib/acme/$DOMAIN/key.pem" 2>/dev/null || true
             #chmod 640 "/var/lib/acme/$DOMAIN/cert.pem" "/var/lib/acme/$DOMAIN/key.pem"
             #chown acme:acme "/var/lib/acme/$DOMAIN/"*
+            
+            # --- LE HACK ---
+            # On gruge Nginx en dupliquant le certif auto-signé 
+            # pour simuler la fullchain et la chain.
+            # Ça évite le crash de Nginx pour fichier manquant.
+            cp "/var/lib/acme/$DOMAIN/cert.pem" "/var/lib/acme/$DOMAIN/fullchain.pem"
+            cp "/var/lib/acme/$DOMAIN/cert.pem" "/var/lib/acme/$DOMAIN/chain.pem"
+            # ---------------
+
             rm -rf "$DOMAIN" 2>/dev/null || true
             echo "Temporary certificate created for $DOMAIN"
             exit 0
