@@ -54,7 +54,6 @@ let
           }
 
           location @public {
-            autoindex off;
             root ${cfg.publicDir};
             try_files $uri $uri/ =404;
             autoindex on;
