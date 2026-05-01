@@ -96,6 +96,18 @@
               description = "Liste des tags à appliquer sur ce noeud.";
             };
 
+            publicInterface = lib.mkOption {
+              type = lib.types.str;
+              default = "ens3";
+              description = "Nom de l'interface réseau publique (ex: ens3, eth0, enp0s3).";
+            };
+
+            useDHCP = lib.mkOption {
+              type = lib.types.bool;
+              default = true;
+              description = "Utiliser DHCP sur l'interface publique. Désactiver pour une IP statique.";
+            };
+
             timezone = lib.mkOption {
               type = lib.types.str;
               default = "Europe/Paris";

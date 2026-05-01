@@ -1,10 +1,12 @@
 # -------------------------------------------------------------------------
 # network.nix — Configuration réseau de base du noeud
 #
-# Configure le hostname, l'interface ens3 (DHCP IPv4 + IPv6 statique OVH),
+# Configure le hostname, l'interface publique (DHCP IPv4 + IPv6 statique),
 # active nftables et le sysctl ip_nonlocal_bind pour le proxy transparent.
 #
-# Les paramètres sont lus depuis `infra.nodes.<nom>.{ipv6,ipv6_gateway}`.
+# L'interface publique est lue depuis `infra.nodes.<nom>.publicInterface`
+# (par défaut "ens3" pour OVH). Les paramètres IPv6 sont lus depuis
+# `infra.nodes.<nom>.{ipv6,ipv6_gateway}`.
 # -------------------------------------------------------------------------
 { config, lib, ... }:
 
@@ -20,8 +22,8 @@ in
 
     nftables.enable = true;
 
-    interfaces.ens3 = {
-      useDHCP = true;
+    interfaces.${node.publicInterface} = {
+      useDHCP = node.useDHCP;
 
       ipv6.addresses = lib.mkIf (node.ipv6 or null != null) [
         {
@@ -33,7 +35,7 @@ in
 
     defaultGateway6 = lib.mkIf (node.ipv6_gateway or null != null) {
       address = node.ipv6_gateway;
-      interface = "ens3";
+      interface = node.publicInterface;
     };
   };
 

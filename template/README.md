@@ -26,6 +26,9 @@ Cela donne accès aux outils : `colmena`, `just`, et tous les scripts
       ipv6 = "2001:41d0:305:2100::a38c"; # IPv6 (dans le panel OVH)
       ipv6_gateway = "2001:41d0:305:2100::1"; # Passerelle IPv6
 
+      publicInterface = "ens3";         # Interface publique (défaut: ens3)
+      useDHCP = true;                   # DHCP sur l'interface publique (défaut: true)
+
       user = "root";
       sshKey = "~/.ssh/id_ed25519";      # Chemin local de votre clé SSH
 
