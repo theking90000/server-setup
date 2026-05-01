@@ -25,45 +25,56 @@ let
   enabled = services.hasTag tag;
   cfg = config.infra.www;
 
-  nginxConfig = pkgs.writeText "www-nginx.conf" (''
-    daemon off;
-    worker_processes 1;
-    error_log stderr;
-    pid /run/www/nginx.pid;
-    events { worker_connections 1024; }
-    http {
-      access_log off;
-      include ${pkgs.nginx}/conf/mime.types;
-      default_type application/octet-stream;
+  nginxConfig = pkgs.writeText "www-nginx.conf" (
+    ''
+      daemon off;
+      worker_processes 1;
+      error_log stderr;
+      pid /run/www/nginx.pid;
+      events { worker_connections 1024; }
+      http {
+        access_log off;
+        include ${pkgs.nginx}/conf/mime.types;
+        default_type application/octet-stream;
 
-      server {
-        listen ${services.getVpnIp}:${toString cfg.port};
-        server_name _;
-      ''
-      + (if cfg.package != null then ''
-        root ${cfg.package};
+        server_tokens off;
 
-        location / {
-          try_files $uri $uri/ @public;
-        }
+        server {
+          listen ${services.getVpnIp}:${toString cfg.port};
+          server_name _;
+    ''
+    + (
+      if cfg.package != null then
+        ''
+          root ${cfg.package};
 
-        location @public {
+          location / {
+            autoindex off;
+            try_files $uri $uri/ @public;
+          }
+
+          location @public {
+            autoindex off;
+            root ${cfg.publicDir};
+            try_files $uri $uri/ =404;
+            autoindex on;
+          }
+        ''
+      else
+        ''
           root ${cfg.publicDir};
-          try_files $uri $uri/ =404;
-          autoindex on;
-        }
-      '' else ''
-        root ${cfg.publicDir};
 
-        location / {
-          try_files $uri $uri/ =404;
-          autoindex on;
+          location / {
+            try_files $uri $uri/ =404;
+            autoindex on;
+          }
+        ''
+    )
+    + ''
         }
-      '')
-      + ''
       }
-    }
-  '');
+    ''
+  );
 in
 {
   options.infra.www = {
