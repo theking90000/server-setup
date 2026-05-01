@@ -46,6 +46,9 @@
           name = "wg-key";
         };
 
+        infra.acme.certSyncerPrivateKey = builtins.readFile ./inventory/keys/syncer.key;
+        infra.acme.certSyncerPublicKey = builtins.readFile ./inventory/keys/syncer.key.pub;
+
         infra.nodes = lib.mkMerge [
           nodesData.nodes
           (builtins.mapAttrs (nodeName: _: {

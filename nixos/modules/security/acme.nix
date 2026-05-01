@@ -175,6 +175,9 @@ in
         serviceConfig.Group = "acme";
         serviceConfig.LoadCredential = [ "ssh-key:/var/lib/secrets/syncer.key" ];
 
+        wants = [ "network-online.target" ];
+        after = [ "network-online.target" ];
+
         scriptArgs = "%i";
 
         script = ''
