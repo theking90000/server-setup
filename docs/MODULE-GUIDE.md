@@ -119,9 +119,9 @@ in
     # Tier 3 — Global: public ingress (any node can register)
     (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."myapp" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
+        url = cfg.url;                                    # auto-extracts domain + path
         backend = map (ip: "${ip}:8080") (services.getVpnIpsByTag tag);
-        blockPaths = [ "/metrics" "/private" ];  # paths to 403
+        blockPaths = [ "/metrics" "/private" ];           # paths to 403
       };
     })
 
@@ -298,26 +298,62 @@ The `restic.nix` module reads all registered paths from
 
 ### 7.3 Ingress / Nginx (`infra.ingress`)
 
-Register a public-facing domain → backend mapping:
+Register a public-facing route for your service. Two methods:
+
+**Method A — URL (recommended)** : le domaine et le chemin sont extraits
+automatiquement de l'URL.
 
 ```nix
 (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
   infra.ingress."myapp" = {
-    domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
+    url = cfg.url;                               # "https://exemple.com/app" → domain + /app
     backend = map (ip: "${ip}:8080") (services.getVpnIpsByTag tag);
-    blockPaths = [ "/metrics" ];               # optional 403 paths
-    sslCertificate = "custom-cert";             # optional: override ACME cert name
+    blockPaths = [ "/metrics" ];                 # optional 403 paths
+    sslCertificate = "custom-cert";              # optional: override ACME cert name
   };
 })
 ```
+
+**Method B — Domain + path (legacy)** : si vous ne passez pas par une URL
+configurée.
+
+```nix
+  infra.ingress."myapp" = {
+    domain = "exemple.com";                      # domaine seul
+    path = "/app";                               # optionnel, null → /
+    backend = map (ip: "${ip}:8080") (services.getVpnIpsByTag tag);
+  };
+```
+
+**Multi-domaine par chemins** : plusieurs entrées peuvent partager le même
+domaine en spécifiant des chemins différents. Le module nginx les fusionne
+en un seul virtualHost avec plusieurs locations.
+
+```nix
+infra.ingress."app-a" = { url = "https://apps.exemple.com/app-a"; backend = ["10.100.0.1:9004"]; };
+infra.ingress."app-b" = { url = "https://apps.exemple.com/app-b"; backend = ["10.100.0.2:8000"]; };
+# → 1 seul virtualHost "apps.exemple.com"
+#   location /app-a → upstream app-a
+#   location /app-b → upstream app-b
+```
+
+| Field           | Type          | Description                                          |
+|-----------------|---------------|------------------------------------------------------|
+| `url`           | `nullOr str`  | URL complète. Prioritaire sur `domain`+`path`.       |
+| `domain`        | `nullOr str`  | Domaine (ex: `exemple.com`). Ignoré si `url` défini. |
+| `path`          | `nullOr str`  | Chemin (ex: `/app`). `null` = racine `/`.            |
+| `backend`       | `[str]`       | Liste d'IP:port des backends.                        |
+| `blockPaths`    | `[str]`       | Chemins à bloquer (403). Préfixés par le `path`.     |
+| `sslCertificate`| `nullOr str`  | Override du nom du certificat ACME (défaut: domaine).|
 
 The guard condition ensures ingress is only created when:
 - A public URL is configured (`cfg.url != null`)
 - At least one backend exists (`getVpnIpsByTag != []`)
 
-Nginx converts ingress entries into `upstreams` (load-balanced to all
-backends) and `virtualHosts` (domain → upstream). It also auto-registers
-each domain with ACME for TLS certificate generation.
+Nginx groups ingress entries by effective domain, creates one `upstream`
+per entry (load-balanced to all backends), and one `virtualHost` per domain
+with a `location` block at each entry's path (or `/`). ACME domains are
+auto-registered and deduplicated.
 
 ### 7.4 Telemetry / Prometheus (`infra.telemetry`)
 
@@ -669,7 +705,7 @@ in
 
     (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."myapp" = {
-        domain = lib.replaceStrings [ "https://" ] [ "" ] cfg.url;
+        url = cfg.url;
         backend = map (ip: "${ip}:8080") (services.getVpnIpsByTag tag);
       };
     })
@@ -723,7 +759,7 @@ For every new module:
 - [ ] Bind to `services.getVpnIp` (never `0.0.0.0`)
 - [ ] `infra.security.acls` for every port
 - [ ] `infra.backup.paths` for data directories
-- [ ] `infra.ingress."<name>"` conditional on url + backends
+- [ ] `infra.ingress."<name>"` conditional on url + backends (use `url` field, not `domain` + `replaceStrings`)
 - [ ] `infra.telemetry."<name>"` if the service exposes Prometheus metrics
 - [ ] `infra.grafana.dashboards` if a Grafana dashboard exists (global guard: `mkIf (services.getHostsByTag tag != [ ])`)
 - [ ] Secrets via `ops.mkSecretKeys` (never plain imports)
