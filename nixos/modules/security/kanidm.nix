@@ -182,7 +182,7 @@ in
         bindaddress = "${services.getVpnIp}:${toString cfg.port}";
         origin = cfg.url;
         domain = domain;
-        tls_cert = "/run/credentials/kanidm.service/tls_cert";
+        tls_chain = "/run/credentials/kanidm.service/tls_chain";
         tls_key = "/run/credentials/kanidm.service/tls_key";
       };
 
@@ -200,7 +200,7 @@ in
 
       # ── Load ACME certs via systemd credentials ──
       systemd.services.kanidm.serviceConfig.LoadCredential = [
-        "tls_cert:/var/lib/acme/${certName}/fullchain.pem"
+        "tls_chain:/var/lib/acme/${certName}/fullchain.pem"
         "tls_key:/var/lib/acme/${certName}/key.pem"
       ];
 
