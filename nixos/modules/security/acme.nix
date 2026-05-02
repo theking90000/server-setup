@@ -286,7 +286,7 @@ in
         }
         map
         (d: {
-          "sync-cert-reload@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}" = {
+          "sync-cert-reload-${lib.replaceStrings [ "*" ] [ "_" ] d.domain}" = {
             description = "Reload services after certificate sync";
             serviceConfig.Type = "oneshot";
             serviceConfig.User = "root";
