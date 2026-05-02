@@ -170,8 +170,10 @@ in
           certName = lib.replaceStrings ["*"] ["_"] d.domain;
         in
           map (svc: {
-            "${svc}".wants = [ "acme-${certName}.service" ];
-            "${svc}".after = [ "acme-${certName}.service" ];
+            "${svc}" = {
+              wants = [ "acme-${certName}.service" ];
+              after = [ "acme-${certName}.service" ];
+            };
           }) (if d.services != null then d.services else [])
       ) cfg.domains);
     })
@@ -333,8 +335,10 @@ in
           syncUnit = "sync-cert@${lib.replaceStrings ["*"] ["_"] d.domain}.service";
         in
           map (svc: {
-            "${svc}".wants = [ syncUnit ];
-            "${svc}".after = [ syncUnit ];
+            "${svc}" = {
+              wants = [ syncUnit ];
+              after = [ syncUnit ];
+            };
           }) (if d.services != null then d.services else [])
       ) cfg.domains);
 
