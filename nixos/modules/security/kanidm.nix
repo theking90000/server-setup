@@ -48,15 +48,11 @@ let
 
   ldapsConfig = cfg.ldapPort != null;
 
-  # ── Collecte des users avec isAdmin ──
-  adminUsers = lib.attrNames (lib.filterAttrs (_: u: u.isAdmin) cfg.users);
-
   # ── OAuth2 clients → kanidm provision ──
   oidcConfig = lib.mapAttrsToList (name: client: {
     inherit name;
     displayName = client.displayName;
-    origin = cfg.url;
-    redirectUris = client.redirectUris;
+    originUrl = client.redirectUris;
     scopeMaps = client.scopeMaps;
     supplementaryScopeMaps = client.supplementaryScopeMaps;
     claimMaps = client.claimMaps;
@@ -180,25 +176,24 @@ in
 
     # ── Kanidm server (per-node, URL required) ──
     (lib.mkIf (enabled && cfg.url != null) {
-      services.kanidm.server = {
-        enable = true;
-        settings = {
-          bindaddress = "${services.getVpnIp}:${toString cfg.port}";
-          origin = cfg.url;
-          domain = domain;
-          tls_cert = "/run/credentials/kanidm.service/tls_cert";
-          tls_key = "/run/credentials/kanidm.service/tls_key";
-        };
+      services.kanidm.enableServer = true;
+
+      services.kanidm.serverSettings = {
+        bindaddress = "${services.getVpnIp}:${toString cfg.port}";
+        origin = cfg.url;
+        domain = domain;
+        tls_cert = "/run/credentials/kanidm.service/tls_cert";
+        tls_key = "/run/credentials/kanidm.service/tls_key";
       };
 
-      infra.acme.domains = lib.mkIf (enabled && cfg.url != null) [
+      infra.acme.domains = [
         {
           domain = domain;
           services = [ "kanidm" ];
         }
       ];
 
-      services.kanidm.server.settings.online_backup = {
+      services.kanidm.serverSettings.online_backup = {
         path = "/var/lib/kanidm/backups";
         schedule = "00 22 * * *";
       };
@@ -239,20 +234,19 @@ in
 
     # ── LDAPS bind address (per-node, optional) ──
     (lib.mkIf (enabled && cfg.url != null && ldapsConfig) {
-      services.kanidm.server.settings.ldapbindaddress = "${services.getVpnIp}:${toString cfg.ldapPort}";
+      services.kanidm.serverSettings.ldapbindaddress = "${services.getVpnIp}:${toString cfg.ldapPort}";
     })
 
     # ── User provisioning → kanidm persons ──
     (lib.mkIf (enabled && cfg.users != { }) {
-      services.kanidm.provision.persons = lib.mapAttrs (_: user: {
-        displayName = user.displayName;
-        email = user.email;
-      }) cfg.users;
-    })
-
-    # ── Admin users → idm_admin group ──
-    (lib.mkIf (enabled && adminUsers != [ ]) {
-      services.kanidm.provision.groups.idm_admin.members = adminUsers;
+      services.kanidm.provision.persons = lib.mapAttrs (
+        _: user:
+        {
+          displayName = user.displayName;
+        }
+        // lib.optionalAttrs (user.email != null) { mailAddresses = [ user.email ]; }
+        // lib.optionalAttrs user.isAdmin { groups = [ "idm_admin" ]; }
+      ) cfg.users;
     })
 
     # ── Group provisioning ──
@@ -267,8 +261,7 @@ in
           name = client.name;
           value = {
             displayName = client.displayName;
-            origin = client.origin;
-            redirectUris = client.redirectUris;
+            originUrl = client.originUrl;
             scopeMaps = client.scopeMaps;
             supplementaryScopeMaps = client.supplementaryScopeMaps;
             claimMaps = client.claimMaps;
