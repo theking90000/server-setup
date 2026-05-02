@@ -284,24 +284,25 @@ in
 
           };
         }
-        map
-        (d: {
-          "sync-cert-reload-${lib.replaceStrings [ "*" ] [ "_" ] d.domain}" = {
-            description = "Reload services after certificate sync";
-            serviceConfig.Type = "oneshot";
-            serviceConfig.User = "root";
-            script = ''
-              echo "Reloading services for ${d.domain}..."
-              ${d.postRun}
-              ${lib.optionalString (
-                d.reloadServices != [ ]
-              ) "systemctl --no-block try-reload-or-restart ${lib.escapeShellArgs d.reloadServices}"}
-            '';
-            after = [ "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service" ];
-            wantedBy = [ "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service" ];
-          };
-        })
-        cfg.domains
+        (lib.mkMerge (map
+          (d: {
+            "sync-cert-reload-${lib.replaceStrings [ "*" ] [ "_" ] d.domain}" = {
+              description = "Reload services after certificate sync";
+              serviceConfig.Type = "oneshot";
+              serviceConfig.User = "root";
+              script = ''
+                echo "Reloading services for ${d.domain}..."
+                ${d.postRun}
+                ${lib.optionalString (
+                  d.reloadServices != [ ]
+                ) "systemctl --no-block try-reload-or-restart ${lib.escapeShellArgs d.reloadServices}"}
+              '';
+              after = [ "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service" ];
+              wantedBy = [ "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service" ];
+            };
+          })
+          cfg.domains
+        ))
       ];
     })
     (lib.mkIf (!issuer && cfg.domains != [ ] && issuers != [ ]) {
