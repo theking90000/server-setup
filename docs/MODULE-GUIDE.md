@@ -409,6 +409,83 @@ services.grafana.provision.datasources.settings.datasources = [ ... ];
 
 This is the same mechanism used by the Prometheus module to self-register.
 
+### 7.7 ACME Certificates (`infra.acme.domains`)
+
+The ACME module provides TLS certificates across all nodes via an
+**issuer/syncer** model:
+
+- **Issuer** (tag `acme-issuer`): runs Let's Encrypt DNS challenge, stores certs
+  in `/var/lib/acme/`. Exposes them via `rrsync` (SSH) to other nodes.
+- **Syncer** (all other nodes): pulls certs from the issuer via
+  `rsync` (systemd `sync-cert@`). Falls back to self-signed `minica` certs if
+  the issuer is unreachable — services can start even before the first sync.
+
+#### Domain options
+
+```nix
+# private repo — a typical domain entry:
+infra.acme.domains = [
+  {
+    domain = "registry.example.com";
+    services = [ "nginx" "docker-registry" ];   # ← key field for modules
+    postRun = "echo cert updated";
+  }
+  {
+    domain = "*.apps.example.com";
+    services = [ "nginx" ];
+  }
+];
+```
+
+| Field         | Type          | Description                                                    |
+|---------------|---------------|----------------------------------------------------------------|
+| `domain`      | `str`         | Domain name (supports `*.` wildcards).                         |
+| `services`    | `nullOr [str]`| Systemd services that depend on this cert. **MUST be the name of a systemd unit** (e.g. `"nginx"`, `"docker-registry"`). |
+| `dnsProvider` | `nullOr str`  | Override the global DNS provider for this domain.              |
+| `credentialsFile` | `nullOr str` | Override DNS credentials file for this domain.                 |
+| `postRun`     | `nullOr str`  | Shell script executed after cert sync/renewal.                 |
+
+#### How services declare cert dependencies
+
+A module that serves TLS (e.g. nginx) does **not** hardcode its cert
+dependency. Instead, the private repo lists the service in `services` for
+each domain:
+
+```nix
+# Private repo — nginx needs certs for these domains:
+infra.acme.domains = [
+  { domain = "example.com";    services = ["nginx"]; }
+  { domain = "*.example.com";  services = ["nginx"]; }
+];
+```
+
+The ACME module automatically generates `systemd.services.<svc>.wants` and
+`systemd.services.<svc>.after` to ensure the service waits for the cert:
+
+- On the **issuer** node: depends on `acme-<domain>.service`
+- On **syncer** nodes: depends on `sync-cert@<domain>.service`
+
+If a service is listed in multiple domains, the dependency lists accumulate.
+
+A module that needs TLS should **document in its header** that users must
+list it in the corresponding `services` field:
+
+```nix
+# -------------------------------------------------------------------------
+# nginx.nix — Reverse proxy Nginx + VTS
+#
+# Configuration privée requise :
+#   - Dans chaque entrée infra.acme.domains dont le domaine est
+#     utilisé par un ingress, lister "nginx" dans services.
+# -------------------------------------------------------------------------
+```
+
+The nginx module auto-registers its domains via `infra.acme.domains`
+(through `infra.ingress` → `infra.acme.domains` deduction; the nginx module
+itself pushes domain names to `infra.acme.domains` — but `services` is set
+in the private repo, not by the module). This separation ensures the module
+stays generic while the private repo owns the topology.
+
 ---
 
 ## 7b. Cross-Node Side Effects — Global vs Per-Node Guards
