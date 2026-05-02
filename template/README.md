@@ -57,6 +57,7 @@ Cela donne accès aux outils : `colmena`, `just`, et tous les scripts
 - `config/ntfy/ntfy.nix` → URL, upstream
 - `config/reposilite/reposilite.nix` → URL
 - `config/filesave/filesave.nix` → URL
+- `config/kanidm/kanidm.nix` → URL, users OAuth2, LDAPS (optionnel)
 - `config/www/www.nix` → URL, paquet Nix optionnel
 
 Supprimez les fichiers `config/<app>/<app>.nix` des applications que vous

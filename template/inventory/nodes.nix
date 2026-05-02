@@ -18,6 +18,7 @@
         "acme-issuer"
         "node-metrics"
         "backup"
+        # "kanidm"               # ← décommentez pour activer le provider SSO
       ];
     };
 

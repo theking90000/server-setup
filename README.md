@@ -82,6 +82,7 @@ Une fois configuré, le projet déploie une infrastructure complète :
 | **Ntfy**     | Serveur de notifications push avec métriques. |
 | **Reposilite** | Gestionnaire de dépôts Maven avec métriques. |
 | **FileSave** | Serveur d'hébergement de fichiers. |
+| **Kanidm**   | Fournisseur d'identité SSO (OIDC/OAuth2/LDAPS) avec provisioning déclaratif des utilisateurs et clients OAuth2. Gère les certificats ACME via LoadCredential systemd. |
 | **www**     | Serveur de fichiers statiques avec paquet Nix optionnel. |
 
 Le tout est orchestré par **Colmena** : un seul `just deploy` suffit pour

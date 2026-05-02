@@ -53,6 +53,12 @@ let
         default = [ ];
         description = "Liste de chemins à bloquer (ex: ['/admin', '/metrics'])";
       };
+
+      backendTls = lib.mkOption {
+        type = types.bool;
+        default = false;
+        description = "Utiliser HTTPS pour la connexion aux backends (proxy_ssl_verify off).";
+      };
     };
   };
 

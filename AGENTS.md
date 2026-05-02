@@ -23,7 +23,7 @@ nixos/
     monitoring/             ← node-metrics, prometheus, grafana
     web/                    ← nginx + ingress
     network/                ← wireguard, ssh, base network
-    security/               ← acls, acme
+    security/               ← acls, acme, kanidm
 ```
 
 ## Key concepts
@@ -144,6 +144,7 @@ colmena apply --on <host>        # deploy single host
 | `nixos/lib/ops.nix`                  | mkSecretKeys helper                            |
 | `nixos/modules/web/nginx.nix`        | Nginx reverse proxy + ingress → ACME bridge    |
 | `nixos/modules/security/acme.nix`    | ACME cert issuer + cert-syncer                 |
+| `nixos/modules/security/kanidm.nix`  | Identity provider (SSO/OIDC/OAuth2/LDAPS)      |
 | `nixos/modules/network/wireguard.nix` | Full mesh VPN via WireGuard                    |
 | `docs/MODULE-GUIDE.md`               | Complete module authoring guide                |
 | `inventory/topology.example.nix`     | Template for private node topology             |
