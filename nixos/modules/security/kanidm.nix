@@ -191,6 +191,13 @@ in
         };
       };
 
+      infra.acme.domains = lib.mkIf (enabled && cfg.url != null) [
+        {
+          domain = domain;
+          services = [ "kanidm" ];
+        }
+      ];
+
       services.kanidm.server.settings.online_backup = {
         path = "/var/lib/kanidm/backups";
         schedule = "00 22 * * *";
