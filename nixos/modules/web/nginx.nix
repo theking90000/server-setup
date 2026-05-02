@@ -141,7 +141,7 @@ in
             )
           );
         in
-          map (d: { domain = d; }) domainNames;
+          map (d: { domain = d; reloadServices = [ "nginx" ]; }) domainNames;
 
       # VirtualHosts : un par domaine effectif, avec locations par chemin
       services.nginx.virtualHosts = lib.mapAttrs (
