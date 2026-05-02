@@ -66,14 +66,14 @@ in
             };
 
             postRun = lib.mkOption {
-              type = lib.types.nullOr lib.types.str;
-              default = null;
+              type = lib.types.str;
+              default = "";
               description = "Script à exécuter après la synchronisation des certificats (ex: recharger nginx).";
             };
 
             services = lib.mkOption {
-              type = lib.types.nullOr (lib.types.listOf lib.types.str);
-              default = null;
+              type = (lib.types.listOf lib.types.str);
+              default = [ ];
               description = "Liste de services qui dépendent des certificats. Seront rechargés automatiquement après et ajoutés comme dépendances du service de sync pour s'assurer qu'ils redémarrent après la mise à jour des certs.";
             };
           };
@@ -165,17 +165,20 @@ in
         );
       };
 
-      systemd.services = lib.mkMerge (builtins.concatMap (d:
-        let
-          certName = lib.replaceStrings ["*"] ["_"] d.domain;
-        in
+      systemd.services = lib.mkMerge (
+        builtins.concatMap (
+          d:
+          let
+            certName = lib.replaceStrings [ "*" ] [ "_" ] d.domain;
+          in
           map (svc: {
             "${svc}" = {
               wants = [ "acme-${certName}.service" ];
               after = [ "acme-${certName}.service" ];
             };
-          }) (if d.services != null then d.services else [])
-      ) cfg.domains);
+          }) (d.services)
+        ) cfg.domains
+      );
     })
     (lib.mkIf (!issuer && cfg.domains != [ ] && issuers != [ ]) {
       deployment.keys."syncer.key" = lib.mkIf (cfg.certSyncerPrivateKey != null) {
@@ -305,9 +308,7 @@ in
               script = ''
                 echo "Reloading services for ${d.domain}..."
                 ${d.postRun}
-                ${lib.optionalString (
-                  d.services != null && d.services != [ ]
-                ) "systemctl --no-block try-reload-or-restart ${lib.escapeShellArgs d.services}"}
+                ${"systemctl --no-block try-reload-or-restart ${lib.escapeShellArgs d.services}"}
               '';
               after = [ "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service" ];
               wantedBy = [ "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service" ];
@@ -330,17 +331,20 @@ in
         d: "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.timer"
       ) cfg.domains;
 
-      systemd.services = lib.mkMerge (builtins.concatMap (d:
-        let
-          syncUnit = "sync-cert@${lib.replaceStrings ["*"] ["_"] d.domain}.service";
-        in
+      systemd.services = lib.mkMerge (
+        builtins.concatMap (
+          d:
+          let
+            syncUnit = "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service";
+          in
           map (svc: {
             "${svc}" = {
               wants = [ syncUnit ];
               after = [ syncUnit ];
             };
-          }) (if d.services != null then d.services else [])
-      ) cfg.domains);
+          }) (d.services)
+        ) cfg.domains
+      );
 
     })
   ];
