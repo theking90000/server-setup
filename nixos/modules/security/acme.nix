@@ -142,10 +142,9 @@ in
         acceptTerms = true;
         defaults.email = getVal cfg.email cfg.email;
 
-        certs = lib.listToAttrs (
+        certs = lib.mkMerge (
           map (certOpts: {
-            name = lib.replaceStrings [ "*" ] [ "_" ] certOpts.domain;
-            value = {
+            "${lib.replaceStrings [ "*" ] [ "_" ] certOpts.domain}" = {
               dnsProvider = getVal certOpts.dnsProvider cfg.dnsProvider;
               credentialsFile = getVal certOpts.credentialsFile "/var/lib/secrets/acme/dnsCredentials";
 
