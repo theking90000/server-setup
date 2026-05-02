@@ -178,6 +178,8 @@ in
     (lib.mkIf (enabled && cfg.url != null) {
       services.kanidm.enableServer = true;
 
+      services.kanidm.package = pkgs.kanidm_1_9;
+
       services.kanidm.serverSettings = {
         bindaddress = "${services.getVpnIp}:${toString cfg.port}";
         origin = cfg.url;
