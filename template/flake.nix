@@ -61,6 +61,7 @@
 
         deployment = {
           targetHost = node.publicIp;
+          targetPort = node.sshPort or 22;
           targetUser = "root";
           tags = node.tags;
           buildOnTarget = true;

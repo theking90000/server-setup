@@ -76,6 +76,12 @@
               description = "Chemin de la clé SSH privée utilisée pour se connecter.";
             };
 
+            sshPort = lib.mkOption {
+              type = lib.types.int;
+              default = 22;
+              description = "Port SSH du noeud.";
+            };
+
             wireguardPublicKey = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;

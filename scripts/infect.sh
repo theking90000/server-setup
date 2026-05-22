@@ -6,16 +6,17 @@ DEFAULT_NIX_CHANNEL="nixos-25.11"
 KEYS_FILE="$HOME/.ssh/authorized_keys"
 DEFAULT_PUB_KEY="$HOME/.ssh/id_ed25519.pub"
 SSH_IDENTITY=""
+SSH_PORT=""
 SSH_OPTS=()
 
 usage() {
-    echo "Usage: $0 [-i identity_file] <user@ip> [nix_channel]"
-    echo "Example: $0 -i ~/.ssh/my_custom_key debian@1.2.3.4"
+    echo "Usage: $0 [-i identity_file] [-p port] <user@ip> [nix_channel]"
+    echo "Example: $0 -i ~/.ssh/my_custom_key -p 2222 debian@1.2.3.4"
     exit 1
 }
 
 # Parse options
-while getopts "i:" opt; do
+while getopts "i:p:" opt; do
   case $opt in
     i)
       SSH_IDENTITY="$OPTARG"
@@ -23,7 +24,11 @@ while getopts "i:" opt; do
         echo "❌ Error: Identity file '$SSH_IDENTITY' not found."
         exit 1
       fi
-      SSH_OPTS=("-i" "$SSH_IDENTITY")
+      SSH_OPTS+=("-i" "$SSH_IDENTITY")
+      ;;
+    p)
+      SSH_PORT="$OPTARG"
+      SSH_OPTS+=("-p" "$SSH_PORT")
       ;;
     *)
       usage

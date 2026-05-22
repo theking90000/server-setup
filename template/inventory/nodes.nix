@@ -12,6 +12,7 @@
 
       user = "root";
       sshKey = "CHANGEME";
+      sshPort = 22;
 
       tags = [
         "web-server"
