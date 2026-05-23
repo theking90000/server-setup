@@ -53,6 +53,7 @@ Cela donne accès aux outils : `colmena`, `just`, et tous les scripts
 - `config/grafana/grafana.nix` → mot de passe, URL, secret
 - `config/restic/restic.nix` → repo S3, mot de passe, credentials AWS
 - `config/gitea/gitea.nix` → URL
+- `config/jellyfin/jellyfin.nix` → URL
 - `config/docker-registry/docker-registry.nix` → URL, comptes htpasswd
 - `config/ntfy/ntfy.nix` → URL, upstream
 - `config/reposilite/reposilite.nix` → URL

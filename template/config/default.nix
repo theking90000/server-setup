@@ -5,6 +5,7 @@
     ./filesave/filesave.nix
     ./gitea/gitea.nix
     ./grafana/grafana.nix
+    ./jellyfin/jellyfin.nix
     ./kanidm/kanidm.nix
     ./ntfy/ntfy.nix
     ./rclone-sync/rclone-sync.nix
