@@ -41,6 +41,7 @@ in
     name = "generate-key";
     runtimeInputs = [
       pkgs.openssh
+      pkgs.openssl
     ];
     text = builtins.readFile ./generate-key.sh;
   };
