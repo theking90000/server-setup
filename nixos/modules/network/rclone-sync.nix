@@ -8,8 +8,14 @@
 #
 # Les configs rclone (configContent) sont déployées comme secrets
 # via Colmena dans /var/lib/secrets/rclone-sync/<mountName>/rclone.conf.
+# Le token OAuth est extrait puis persisté hors secrets dans
+# /var/lib/rclone-sync/<mountName>/token pour survivre aux redeploys.
 # La couche crypt de rclone est supportée nativement en définissant
 # deux remotes [backend] + [crypt] dans configContent.
+#
+# Pour chaque mount avec configContent, un service systemd rclone-token-<name>
+# prépare le runtime config (secret sans token + token persistant) et sauvegarde
+# le token rafraîchi au démontage.
 #
 # Options de performance avec des défauts agressifs :
 #   - vfsCacheMode = "writes", cacheDir = /var/cache/rclone
@@ -27,7 +33,6 @@
 
 let
   inherit (lib) mkOption mkIf mkMerge types;
-  inherit (builtins) elem attrValues removeAttrs;
 
   cfg = config.infra.rcloneSync;
   nodeName = config.infra.nodeName;
@@ -44,11 +49,12 @@ let
     in
     builtins.replaceStrings [ "-" ] [ "\\x2d" ] withDashes;
 
+  # Options rclone (key=value) → converties en RCLONE_KEY via args2env
   mkRcloneOptions = mountName: mountCfg:
     let
       secretOpt =
         lib.optional (mountCfg.configContent != null)
-          "config=/var/lib/secrets/rclone-sync/${mountName}/rclone.conf";
+          "config=/run/rclone-sync/${mountName}/rclone.conf";
 
       cacheOpts =
         lib.optional (mountCfg.vfsCacheMode != "off")
@@ -67,6 +73,83 @@ let
           "vfs-read-ahead=${mountCfg.readAhead}";
     in
     secretOpt ++ cacheOpts ++ perfOpts ++ mountCfg.extraOptions;
+
+  # ── Helpers pour construire les unités systemd ──
+
+  mkMountEntry = mountName: mountCfg:
+    let
+      device = if mountCfg.remotePath == ""
+        then "${mountCfg.remoteName}:"
+        else "${mountCfg.remoteName}:${mountCfg.remotePath}";
+
+      fuseFlags = [ "nodev" "nofail" "args2env" ]
+        ++ lib.optional mountCfg.allowOther "allow_other"
+        ++ lib.optional mountCfg.allowRoot "allow_root";
+
+      rcloneOpts = mkRcloneOptions mountName mountCfg;
+      allOptions = lib.concatStringsSep "," (fuseFlags ++ rcloneOpts);
+
+      hasConfig = mountCfg.configContent != null;
+    in
+    {
+      what = device;
+      where = mountCfg.mountPoint;
+      type = "rclone";
+      options = allOptions;
+
+      wantedBy = [ "remote-fs.target" ];
+      before = [ "remote-fs.target" ];
+
+      wants = [ "network-online.target" ] ++ mountCfg.wants;
+      after = [ "network-online.target" ] ++ lib.optional hasConfig "rclone-token-${mountName}.service" ++ mountCfg.after;
+
+      requires = lib.optional hasConfig "rclone-token-${mountName}.service";
+      bindsTo = lib.optional hasConfig "rclone-token-${mountName}.service";
+    };
+
+  mkTokenService = mountName: mountCfg:
+    let
+      mountUnit = escapeMountUnit mountCfg.mountPoint;
+      runtimeDir = "/run/rclone-sync/${mountName}";
+      stateDir = "/var/lib/rclone-sync/${mountName}";
+      secretPath = "/var/lib/secrets/rclone-sync/${mountName}/rclone.conf";
+      tokenFile = "${stateDir}/token";
+      runtimeConfig = "${runtimeDir}/rclone.conf";
+    in
+    {
+      description = "Rclone token manager for ${mountName}";
+
+      wantedBy = [ "remote-fs.target" ];
+      partOf = [ "${mountUnit}.mount" ];
+
+      serviceConfig = {
+        Type = "oneshot";
+        RemainAfterExit = "yes";
+      };
+
+      script = ''
+        mkdir -p ${runtimeDir} ${stateDir}
+
+        if [ -f "${tokenFile}" ]; then
+          # Merge: static config (sans la ligne token) + token persistant
+          grep -v '^token ' "${secretPath}" > "${runtimeConfig}"
+          cat "${tokenFile}" >> "${runtimeConfig}"
+        else
+          # Premier boot : utiliser le secret tel quel (contient le token initial)
+          cp "${secretPath}" "${runtimeConfig}"
+        fi
+        chmod 0600 "${runtimeConfig}"
+      '';
+
+      postStop = ''
+        if [ -f "${runtimeConfig}" ] && grep -q '^token ' "${runtimeConfig}" 2>/dev/null; then
+          grep '^token ' "${runtimeConfig}" > "${tokenFile}.tmp" 2>/dev/null || true
+          if [ -s "${tokenFile}.tmp" ]; then
+            mv "${tokenFile}.tmp" "${tokenFile}"
+          fi
+        fi
+      '';
+    };
 in
 {
   options.infra.rcloneSync = {
@@ -102,7 +185,7 @@ in
           configContent = mkOption {
             type = types.nullOr types.str;
             default = null;
-            description = "Configuration rclone (secret — déployé via Colmena).";
+            description = "Configuration rclone (secret — déployé via Colmena). Contient le token OAuth initial pour le premier boot.";
           };
 
           vfsCacheMode = mkOption {
@@ -144,7 +227,7 @@ in
           allowOther = mkOption {
             type = types.bool;
             default = true;
-            description = "Autoriser les autres utilisateurs à accéder au montage (FUSE allow_other). Si désactivé, seul root peut y accéder.";
+            description = "Autoriser les autres utilisateurs à accéder au montage (FUSE allow_other).";
           };
 
           allowRoot = mkOption {
@@ -161,21 +244,20 @@ in
           extraOptions = mkOption {
             type = types.listOf types.str;
             default = [ ];
-            description = "Options rclone supplémentaires (format key=value, converties en RCLONE_KEY via args2env).";
-            example = [ "--dir-cache-time=10m" "vfs-read-chunk-size=64M" ];
+            description = "Options rclone supplémentaires (format key=value, converties en RCLONE_KEY).";
           };
 
           wants = mkOption {
             type = types.listOf types.str;
             default = [ ];
-            description = "Unités systemd que ce mount 'wants' (en plus de network-online.target).";
+            description = "Unités systemd que ce mount 'wants'.";
             example = [ "postgresql.service" ];
           };
 
           after = mkOption {
             type = types.listOf types.str;
             default = [ ];
-            description = "Unités systemd après lesquelles ce mount démarre (en plus de network-online.target).";
+            description = "Unités systemd après lesquelles ce mount démarre.";
             example = [ "wireguard-wg0.service" ];
           };
         };
@@ -210,41 +292,18 @@ in
         mkIf (lib.any (m: m.allowOther) (builtins.attrValues mountedHere)) true;
     }
 
-    # ═══ Systemd mount units ═══
+    # ═══ Token services (un par mount avec configContent) ═══
     {
-      systemd.mounts = lib.mkMerge (lib.mapAttrsToList (mountName: mountCfg:
-        let
-          device = if mountCfg.remotePath == ""
-            then "${mountCfg.remoteName}:"
-            else "${mountCfg.remoteName}:${mountCfg.remotePath}";
-
-          unitName = escapeMountUnit mountCfg.mountPoint;
-
-          # FUSE flags passés directement (ne passent pas par args2env)
-          fuseFlags = [ "nodev" "nofail" "args2env" ]
-            ++ lib.optional mountCfg.allowOther "allow_other"
-            ++ lib.optional mountCfg.allowRoot "allow_root";
-
-          # Options rclone (key=value → RCLONE_KEY via args2env)
-          rcloneOpts = mkRcloneOptions mountName mountCfg;
-
-          allOptions = lib.concatStringsSep "," (fuseFlags ++ rcloneOpts);
-        in
-        {
-          ${unitName} = {
-            what = device;
-            where = mountCfg.mountPoint;
-            type = "rclone";
-            options = allOptions;
-
-            wantedBy = [ "remote-fs.target" ];
-            before = [ "remote-fs.target" ];
-
-            wants = [ "network-online.target" ] ++ mountCfg.wants;
-            after = [ "network-online.target" ] ++ mountCfg.after;
-          };
+      systemd.services = lib.mkMerge (lib.mapAttrsToList (mountName: mountCfg:
+        mkIf (mountCfg.configContent != null) {
+          "rclone-token-${mountName}" = mkTokenService mountName mountCfg;
         }
       ) mountedHere);
+    }
+
+    # ═══ Systemd mount units (listOf) ═══
+    {
+      systemd.mounts = lib.mapAttrsToList mkMountEntry mountedHere;
     }
 
     # ═══ Création des dossiers de montage ═══
