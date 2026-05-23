@@ -98,14 +98,23 @@
                 (final: prev: {
                   sncb-insights = sncb-insights.packages.${final.system}.sncb-insights;
                 })
-              ] ++ lib.optionals isPi [
-                nixos-raspberrypi.overlays.pkgs
-                nixos-raspberrypi.overlays.bootloader
-                nixos-raspberrypi.overlays.vendor-kernel
-                nixos-raspberrypi.overlays.vendor-firmware
-                nixos-raspberrypi.overlays.kernel-and-firmware
-                nixos-raspberrypi.overlays.vendor-pkgs
-              ];
+               ] ++ lib.optionals isPi [
+                 nixos-raspberrypi.overlays.pkgs
+                 nixos-raspberrypi.overlays.bootloader
+                 nixos-raspberrypi.overlays.vendor-kernel
+                 nixos-raspberrypi.overlays.vendor-firmware
+                 nixos-raspberrypi.overlays.kernel-and-firmware
+                 nixos-raspberrypi.overlays.vendor-pkgs
+               ] ++ lib.optionals isPi [
+                 # Fix: le ffmpeg_7-full du RPi overlay (ffmpeg_7-rpi.nix)
+                 # n'accepte pas les arguments `version`/`source` dont a besoin
+                 # jellyfin-ffmpeg via .override {}. On remplace jellyfin-ffmpeg
+                 # par la version vanilla de nixpkgs (sans accélération hardware
+                 # RPi, mais fonctionnelle).
+                 (final: prev: {
+                   jellyfin-ffmpeg = nixpkgs.legacyPackages.aarch64-linux.jellyfin-ffmpeg;
+                 })
+               ];
             }
           ) nodesData.nodes;
 
