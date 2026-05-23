@@ -22,6 +22,24 @@ in
               type = lib.types.attrsOf lib.types.str;
               default = { };
             };
+            scheme = lib.mkOption {
+              type = lib.types.enum [ "http" "https" ];
+              default = "http";
+              description = "Scheme pour le scrape (http ou https).";
+            };
+            tls_config = lib.mkOption {
+              type = lib.types.nullOr (lib.types.submodule {
+                options = {
+                  insecure_skip_verify = lib.mkOption {
+                    type = lib.types.bool;
+                    default = false;
+                    description = "Désactiver la vérification TLS (ex: cert auto-signé, domain mismatch sur IP VPN).";
+                  };
+                };
+              });
+              default = null;
+              description = "Configuration TLS pour les targets en HTTPS.";
+            };
           };
         }
       )
@@ -41,7 +59,7 @@ in
         scrapeConfigs = lib.mapAttrsToList (jobName: content: {
           job_name = jobName;
           scrape_interval = "15s";
-          static_configs = content;
+          static_configs = map (c: { inherit (c) targets labels; }) content;
           relabel_configs = [
             {
               source_labels = [ "__address__" ];
@@ -62,6 +80,10 @@ in
             password = "password";
           };
 
+        } // lib.optionalAttrs (content != [ ]) {
+          scheme = (lib.head content).scheme;
+        } // lib.optionalAttrs (content != [ ] && (lib.head content).tls_config != null) {
+          tls_config = (lib.head content).tls_config;
         }) config.infra.telemetry;
       };
 

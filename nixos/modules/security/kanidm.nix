@@ -298,6 +298,10 @@ in
           host = host;
           job = "kanidm";
         };
+        scheme = "https";
+        tls_config = {
+          insecure_skip_verify = true;
+        };
       }) (services.getHostsByTag tag);
     }
 
