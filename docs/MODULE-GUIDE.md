@@ -376,6 +376,27 @@ has the tag, `getHostsByTag` returns `[]` and the resulting list is empty.
 The Prometheus module reads `config.infra.telemetry` globally and generates
 its scrape config from the aggregate.
 
+Optional fields for HTTPS targets (e.g. self-signed cert, domain mismatch
+on VPN IP — Kanidm is the primary example):
+
+```nix
+{
+  infra.telemetry."myapp" = map (host: {
+    targets = [ "${host}:8443" ];
+    # ...
+    scheme = "https";                              # default: "http"
+    tls_config = {
+      insecure_skip_verify = true;                  # default: false
+    };
+  }) (services.getHostsByTag tag);
+}
+```
+
+| Field | Type | Default |
+|---|---|---|
+| `scheme` | `"http"` or `"https"` | `"http"` |
+| `tls_config` | `null` or `{ insecure_skip_verify = bool; }` | `null` |
+
 ### 7.5 Dashboards / Grafana (`infra.grafana.dashboards`)
 
 Register a JSON dashboard file for auto-provisioning in Grafana:
