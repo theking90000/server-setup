@@ -28,11 +28,13 @@ Il déploie via SSH, en parallèle, avec rollback automatique en cas d'échec.
 
 ### Cibles matérielles
 
-VPS [OVH](https://www.ovh.com) avec une **IP publique**, provisionnés
+- VPS [OVH](https://www.ovh.com) avec une **IP publique**, provisionnés
 initialement sous **Debian 11**, puis infectés avec NixOS via le script
 `infect-server`. N'importe quel VPS sous Debian 11 (ou 12) avec une IP
 publique fonctionne — les configs hardware sont téléchargées automatiquement
 après l'infection.
+
+- Raspberry-Pi auto hébergé, accessible avec une **IP publique** (port TCP 22, UDP 51820 accessibles via redirection de port). Il est possible d'intégrer le système à un raspberrypi autohébergé. Celui-ci nécessite l'ajout du tag "raspberry-pi" dans la configuration, pour configurer les paquets propres au RPI. Pour l'instant seul le raspberry pi 5 est supporté, mais il est possible de modifier le flake.nix du repo privé sans problème. La configuration hardware doit pas contre être modifiée.
 
 ### Prérequis
 

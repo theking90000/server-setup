@@ -6,6 +6,11 @@
     nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-25.11-darwin";
     infra.url = "github:theking90000/server-setup";
     colmena.url = "github:zhaofengli/colmena";
+
+    nixos-raspberrypi = {
+      url = "github:nvmd/nixos-raspberrypi/main";
+      inputs.nixpkgs.follows = "nixpkgs"; 
+    };
   };
 
   outputs =
@@ -14,6 +19,7 @@
       nixpkgs-darwin,
       infra,
       colmena,
+      nixos-raspberrypi,
       ...
     }:
     let
@@ -34,7 +40,11 @@
           ./inventory/hardware/${name}/hardware.nix
           ./config
           infra.nixosModules.default
+        ] ++ lib.optionals (builtins.elem "raspberry-pi" node.tags) [
+            nixos-raspberrypi.nixosModules.raspberry-pi-5.base
+            nixos-raspberrypi.nixosModules.raspberry-pi-5.page-size-16k
         ];
+
         infra.nodeName = name;
 
         deployment.keys."wg-key" = {
@@ -57,7 +67,7 @@
           }) nodesData.nodes)
         ];
 
-        system.stateVersion = "23.11";
+        system.stateVersion = if builtins.elem "raspberry-pi" node.tags then "25.05" else "23.11";
 
         deployment = {
           targetHost = node.publicIp;
@@ -74,7 +84,35 @@
     {
       colmena = {
         meta = {
+          # Le default obligatoire pour calmer l'évaluateur de Colmena
           nixpkgs = import nixpkgs { system = "x86_64-linux"; };
+
+          # La magie noire pour le multi-architecture : on instancie dynamiquement 
+          # nixpkgs pour CHAQUE noeud, avec son overlay associé.
+          nodeNixpkgs = builtins.mapAttrs (name: node:
+            let
+              isPi = builtins.elem "raspberry-pi" node.tags;
+            in import nixpkgs {
+              system = if isPi then "aarch64-linux" else "x86_64-linux";
+              overlays = [
+                (final: prev: {
+                  sncb-insights = sncb-insights.packages.${final.system}.sncb-insights;
+                })
+              ] ++ lib.optionals isPi [
+                nixos-raspberrypi.overlays.pkgs
+                nixos-raspberrypi.overlays.bootloader
+                nixos-raspberrypi.overlays.vendor-kernel
+                nixos-raspberrypi.overlays.vendor-firmware
+                nixos-raspberrypi.overlays.kernel-and-firmware
+                nixos-raspberrypi.overlays.vendor-pkgs
+              ];
+            }
+          ) nodesData.nodes;
+
+          specialArgs = {
+            inherit nixos-raspberrypi infra sncb-insights;
+            # Tu peux aussi juste faire : inputs = inputs; (si tu passes "inputs" depuis tes arguments de outputs)
+          };
         };
       }
       // builtins.mapAttrs mkNode nodesData.nodes;
