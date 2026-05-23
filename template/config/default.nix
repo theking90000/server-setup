@@ -7,6 +7,7 @@
     ./grafana/grafana.nix
     ./kanidm/kanidm.nix
     ./ntfy/ntfy.nix
+    ./rclone-sync/rclone-sync.nix
     ./reposilite/reposilite.nix
     ./restic/restic.nix
     ./www/www.nix
