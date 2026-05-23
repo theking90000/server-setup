@@ -153,4 +153,6 @@
       }) node.tags
     ) config.infra.nodes
   );
+  
+  config.infra.registeredTags = [ "raspberry-pi" ]; # Pré enregistrer le tag raspberrypi
 }
