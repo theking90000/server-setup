@@ -842,3 +842,164 @@ For every new module:
 - [ ] Secrets via `ops.mkSecretKeys` (never plain imports)
 - [ ] Comment header describing purpose, tags, secrets
 - [ ] Verify: `nix flake check --all-systems`
+
+---
+
+## 13. Exception Module: RcloneSync (No Tag, Per-Node Mounts)
+
+`nixos/modules/network/rclone-sync.nix` is the **only module that does not use
+tags**. Instead, it auto-activates based on a `targetNodes` list in each mount
+entry. If no mount targets the current node, the module does nothing.
+
+### Why no tag?
+
+Tags enforce a global config shared by all tagged nodes. But rclone mounts are
+inherently per-node: `vps1` mounts an S3 bucket, `vps2` mounts an SFTP server.
+Using a tag would force all tagged nodes to have the same mounts, which defeats
+the purpose.
+
+### Architecture
+
+```
+infra.rcloneSync.mounts = {
+  "backup-s3" = {
+    mountPoint = "/mnt/backup";
+    targetNodes = ["vps1" "vps2"];     # ← key field
+    remoteName = "s3-crypt";
+    configContent = "...";              # secret (Colmena)
+    # ...
+  };
+  "media-sftp" = {
+    mountPoint = "/mnt/media";
+    targetNodes = ["vps1"];            # vps1 only
+    # ...
+  };
+};
+```
+
+Each mount entry declares which nodes should receive it via `targetNodes`.
+The module, when evaluated on node N, filters to mounts where `targetNodes`
+contains N, then configures only those.
+
+### How activation works
+
+```nix
+let
+  cfg = config.infra.rcloneSync;
+  nodeName = config.infra.nodeName;
+  mountedHere = lib.filterAttrs (_: m: builtins.elem nodeName m.targetNodes) cfg.mounts;
+  hasMounts = mountedHere != {};
+in
+{
+  config = lib.mkIf hasMounts { ... };
+}
+```
+
+No `services.hasTag`, no `infra.registeredTags`. Just `targetNodes` filtering.
+
+### Module self-registration
+
+The RcloneSync module does **not** self-register to other services:
+
+| Registration | Reason |
+|---|---|
+| `infra.registeredTags` | No tag to register |
+| `infra.security.acls` | No network ports (mounts are local filesystem) |
+| `infra.backup.paths` | Mounted data lives on the remote, not backed up locally |
+| `infra.ingress` | No HTTP endpoint |
+| `infra.telemetry` | No Prometheus metrics endpoint |
+
+### Mount generation
+
+Mounts are generated as **systemd mount units** (not services). Each mount uses
+`type = "rclone"`, which delegates to `mount.rclone`. The `args2env` option
+converts all `key=value` mount options into `RCLONE_KEY=value` environment
+variables (rclone's preferred config method).
+
+```nix
+# What the module generates (conceptual, not actual Nix code):
+systemd.mounts."mnt-backup.mount" = {
+  what = "s3-crypt:backups";           # remoteName:remotePath
+  where = "/mnt/backup";
+  type = "rclone";
+  options = "nodev,nofail,args2env,allow_other,config=/var/lib/...,vfs-cache-mode=writes,...";
+  wantedBy = ["remote-fs.target"];
+  wants = ["network-online.target"];
+};
+```
+
+### Performance defaults
+
+The module ships with aggressive performance defaults suitable for most use-cases:
+
+| Option | Default | Description |
+|---|---|---|
+| `vfsCacheMode` | `"writes"` | Cache VFS mode (off/minimal/writes/full) |
+| `cacheDir` | `"/var/cache/rclone"` | Cache directory (null = rclone default) |
+| `vfsCacheMaxSize` | `"5G"` | Max cache size |
+| `vfsCacheMaxAge` | `"1h"` | Max cache entry age |
+| `bufferSize` | `"16M"` | Read buffer size |
+| `readAhead` | `"128M"` | Sequential read-ahead buffer |
+
+### Secrets
+
+Each mount's `configContent` is deployed as a separate secret file:
+
+```
+/var/lib/secrets/rclone-sync/
+├── backup-s3/
+│   └── rclone.conf       ← configContent for "backup-s3"
+└── media-sftp/
+    └── rclone.conf       ← configContent for "media-sftp"
+```
+
+The `config=/var/lib/secrets/rclone-sync/<name>/rclone.conf` mount option points
+the mount unit to the right secret file. Values never enter `/nix/store`.
+
+### Crypt layer
+
+rclone's built-in `crypt` remote is supported without any special module code.
+Just define two remotes in `configContent`:
+
+```
+[s3-backend]
+type = s3
+provider = AWS
+env_auth = true
+
+[s3-crypt]
+type = crypt
+remote = s3-backend:my-bucket
+password = ...
+```
+
+Set `remoteName = "s3-crypt"` in the mount config. The module doesn't care how
+many remotes are defined — it just mounts the one referenced by `remoteName`.
+
+### Typical config (private repo)
+
+```nix
+# config/rclone-sync/rclone-sync.nix
+{
+  infra.rcloneSync.mounts = {
+    "backup-s3" = {
+      mountPoint = "/mnt/backup";
+      targetNodes = ["vps1" "vps2"];
+      remoteName = "s3-crypt";
+      remotePath = "backups";
+      configContent = ''
+        [s3-backend]
+        type = s3
+        provider = AWS
+        env_auth = true
+        region = us-east-1
+        [s3-crypt]
+        type = crypt
+        remote = s3-backend:mon-bucket
+        password = CHANGEME
+        password2 = CHANGEME
+      '';
+    };
+  };
+}
+```

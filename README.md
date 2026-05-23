@@ -86,6 +86,7 @@ Une fois configuré, le projet déploie une infrastructure complète :
 | **FileSave** | Serveur d'hébergement de fichiers. |
 | **Kanidm**   | Fournisseur d'identité SSO (OIDC/OAuth2/LDAPS) avec provisioning déclaratif des utilisateurs et clients OAuth2. Gère les certificats ACME via LoadCredential systemd. |
 | **www**     | Serveur de fichiers statiques avec paquet Nix optionnel. |
+| **RcloneSync** | Monte des systèmes de fichiers distants (S3, SFTP, WebDAV, …) via rclone. Chaque mount déclare ses nœuds cibles (`targetNodes`) — pas de tag requis. Les configs rclone (credentials, remotes) sont déployées comme secrets. |
 
 Le tout est orchestré par **Colmena** : un seul `just deploy` suffit pour
 construire et déployer l'intégralité de la configuration sur tous les nœuds
@@ -219,7 +220,7 @@ privé, et référencez-les dans vos modules via `pkgs.callPackage`.
 │   │   ├── backup/        ← restic
 │   │   ├── monitoring/    ← node-metrics, prometheus, grafana
 │   │   ├── web/           ← nginx + ingress
-│   │   ├── network/       ← wireguard, ssh
+│   │   ├── network/       ← wireguard, ssh, rclone-sync
 │   │   └── security/      ← acls, acme
 │   └── lib/               ← services.nix, ops.nix
 ├── config/                ← (supprimé — config dans le dépôt privé)

@@ -22,7 +22,7 @@ nixos/
     backup/                 ← restic + backup paths
     monitoring/             ← node-metrics, prometheus, grafana
     web/                    ← nginx + ingress
-    network/                ← wireguard, ssh, base network
+    network/                ← wireguard, ssh, base network, rclone-sync
     security/               ← acls, acme, kanidm
 ```
 
@@ -146,6 +146,7 @@ colmena apply --on <host>        # deploy single host
 | `nixos/modules/security/acme.nix`    | ACME cert issuer + cert-syncer                 |
 | `nixos/modules/security/kanidm.nix`  | Identity provider (SSO/OIDC/OAuth2/LDAPS)      |
 | `nixos/modules/network/wireguard.nix` | Full mesh VPN via WireGuard                    |
+| `nixos/modules/network/rclone-sync.nix` | Remote mounts via Rclone (no tag, uses targetNodes) |
 | `docs/MODULE-GUIDE.md`               | Complete module authoring guide                |
 | `inventory/topology.example.nix`     | Template for private node topology             |
 | `inventory/services.example.nix`     | Template for private node tags                 |
