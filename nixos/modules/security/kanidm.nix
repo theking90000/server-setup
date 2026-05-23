@@ -178,7 +178,11 @@ in
     (lib.mkIf (enabled && cfg.url != null) {
       services.kanidm.enableServer = true;
 
-      services.kanidm.package = pkgs.kanidm_1_9;
+      environment.systemPackages = [
+        pkgs.kanidm_1_10
+      ];
+
+      services.kanidm.package = pkgs.kanidm_1_10;
 
       services.kanidm.serverSettings = {
         bindaddress = "${services.getVpnIp}:${toString cfg.port}";
@@ -186,6 +190,10 @@ in
         domain = domain;
         tls_chain = "/run/credentials/kanidm.service/tls_chain";
         tls_key = "/run/credentials/kanidm.service/tls_key";
+      };
+
+      services.kanidm.clientSettings = {
+        uri = cfg.url;
       };
 
       infra.acme.domains = [
