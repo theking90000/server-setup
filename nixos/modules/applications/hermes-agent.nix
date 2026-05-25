@@ -46,7 +46,7 @@ in
       systemd.services.hermes-agent-init = {
         description = "Initialize Hermes Agent Debian Container";
         wantedBy = [ "multi-user.target" ];
-        before = [ "systemd-nspawn@hermes-agent.service" ];
+        before = [ "hermes-agent.service" ];
         after = [ "network-online.target" ];
         wants = [ "network-online.target" ];
 
@@ -110,11 +110,17 @@ NETEOF
         };
       };
 
-      systemd.services."systemd-nspawn@hermes-agent" = {
+      systemd.services.hermes-agent = {
+        description = "Hermes Agent Container";
         wantedBy = [ "multi-user.target" ];
         after = [ "hermes-agent-init.service" ];
         requires = [ "hermes-agent-init.service" ];
         serviceConfig = {
+          ExecStart = "${pkgs.systemd}/bin/systemd-nspawn --boot --keep-unit --link-journal=try-guest --settings=override --machine=hermes-agent";
+          ExecStop = "${pkgs.systemd}/bin/machinectl poweroff hermes-agent";
+          Type = "notify";
+          WatchdogSec = "3min";
+          KillMode = "mixed";
           MemoryMax = cfg.memoryLimit;
         } // lib.optionalAttrs (cfg.cpuQuota != null) {
           CPUQuota = cfg.cpuQuota;
