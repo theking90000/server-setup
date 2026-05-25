@@ -87,6 +87,7 @@ Une fois configuré, le projet déploie une infrastructure complète :
 | **Kanidm**   | Fournisseur d'identité SSO (OIDC/OAuth2/LDAPS) avec provisioning déclaratif des utilisateurs et clients OAuth2. Gère les certificats ACME via LoadCredential systemd. |
 | **www**     | Serveur de fichiers statiques avec paquet Nix optionnel. |
 | **Jellyfin** | Serveur multimédia avec interface web. La configuration (bibliothèques, utilisateurs) est gérée manuellement (copie de l'ancienne installation). |
+| **Hermes Agent** | Agent IA exécuté dans un conteneur Debian isolé via systemd-nspawn. Réseau restreint (NAT + nftables), limites cgroup (mémoire/CPU), permissions durcies (PrivateUsers, NoNewPrivileges, seccomp). Le conteneur ne peut parler qu'à internet sur les ports autorisés. |
 | **RcloneSync** | Monte des systèmes de fichiers distants (S3, SFTP, WebDAV, …) via rclone. Chaque mount déclare ses nœuds cibles (`targetNodes`) — pas de tag requis. Les configs rclone (credentials, remotes) sont déployées comme secrets. |
 
 Le tout est orchestré par **Colmena** : un seul `just deploy` suffit pour
@@ -217,7 +218,7 @@ privé, et référencez-les dans vos modules via `pkgs.callPackage`.
 │   ├── modules/           ← modules NixOS
 │   │   ├── default.nix
 │   │   ├── nodes.nix
-│   │   ├── applications/  ← docker-registry, gitea, jellyfin, ntfy, reposilite, filesave, www
+│   │   ├── applications/  ← docker-registry, gitea, hermes-agent, jellyfin, ntfy, reposilite, filesave, www
 │   │   ├── backup/        ← restic
 │   │   ├── monitoring/    ← node-metrics, prometheus, grafana
 │   │   ├── web/           ← nginx + ingress
