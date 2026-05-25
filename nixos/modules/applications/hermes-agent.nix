@@ -67,7 +67,7 @@ in
 
             echo "Creating hermes user with root (sudo) access..."
             ${pkgs.systemd}/bin/systemd-nspawn -D "${containerDir}" \
-              useradd -m -s /bin/bash -G sudo hermes
+              /usr/sbin/useradd -m -s /bin/bash -G sudo hermes
             echo "hermes ALL=(ALL) NOPASSWD:ALL" \
               > "${containerDir}/etc/sudoers.d/hermes"
             chmod 440 "${containerDir}/etc/sudoers.d/hermes"
@@ -87,7 +87,8 @@ NETEOF
 
             echo "Installing hermes-agent..."
             ${pkgs.systemd}/bin/systemd-nspawn -D "${containerDir}" \
-              bash -c 'curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash'
+              /usr/bin/env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+              /usr/bin/bash -c '/usr/bin/curl -fsSL https://hermes-agent.nousresearch.com/install.sh | /usr/bin/bash'
 
             echo "Hermes agent container initialized."
           else
