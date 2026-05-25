@@ -85,6 +85,14 @@ DNS=1.1.1.1
 DNS=1.0.0.1
 NETEOF
 
+            echo "Enabling systemd-networkd in container..."
+            ${pkgs.systemd}/bin/systemd-nspawn -D "${containerDir}" \
+              /usr/bin/systemctl enable systemd-networkd
+
+            echo "Setting up DNS for install step..."
+            echo "nameserver 1.1.1.1" > "${containerDir}/etc/resolv.conf"
+            echo "nameserver 1.0.0.1" >> "${containerDir}/etc/resolv.conf"
+
             echo "Installing hermes-agent..."
             ${pkgs.systemd}/bin/systemd-nspawn -D "${containerDir}" \
               /usr/bin/env PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
