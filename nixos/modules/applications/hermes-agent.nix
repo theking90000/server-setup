@@ -125,6 +125,7 @@ NETEOF
         requires = [ "hermes-agent-init.service" ];
         serviceConfig = {
           ExecStart = "${pkgs.systemd}/bin/systemd-nspawn --boot --directory=${containerDir} --keep-unit --link-journal=try-guest --settings=override --machine=hermes-agent";
+          ExecStartPost = "${pkgs.iproute2}/bin/ip addr add ${hostIp}/${toString prefixLength} dev ${vethHost} || true";
           ExecStop = "${pkgs.systemd}/bin/machinectl poweroff hermes-agent";
           Type = "notify";
           WatchdogSec = "3min";
@@ -132,15 +133,6 @@ NETEOF
           MemoryMax = cfg.memoryLimit;
         } // lib.optionalAttrs (cfg.cpuQuota != null) {
           CPUQuota = cfg.cpuQuota;
-        };
-      };
-
-      systemd.network.networks."20-ve-hermes-agent" = {
-        matchConfig = {
-          Name = vethHost;
-        };
-        networkConfig = {
-          Address = "${hostIp}/${toString prefixLength}";
         };
       };
 
