@@ -105,6 +105,9 @@ NETEOF
           NoNewPrivileges = true;
           SystemCallFilter = "@system-service";
         };
+        filesConfig = {
+          Directory = containerDir;
+        };
         networkConfig = {
           VirtualEthernet = true;
         };
