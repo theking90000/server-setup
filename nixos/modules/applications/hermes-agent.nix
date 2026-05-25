@@ -105,9 +105,6 @@ NETEOF
           NoNewPrivileges = true;
           SystemCallFilter = "@system-service";
         };
-        filesConfig = {
-          Directory = containerDir;
-        };
         networkConfig = {
           VirtualEthernet = true;
         };
@@ -119,7 +116,7 @@ NETEOF
         after = [ "hermes-agent-init.service" ];
         requires = [ "hermes-agent-init.service" ];
         serviceConfig = {
-          ExecStart = "${pkgs.systemd}/bin/systemd-nspawn --boot --keep-unit --link-journal=try-guest --settings=override --machine=hermes-agent";
+          ExecStart = "${pkgs.systemd}/bin/systemd-nspawn --boot --directory=${containerDir} --keep-unit --link-journal=try-guest --settings=override --machine=hermes-agent";
           ExecStop = "${pkgs.systemd}/bin/machinectl poweroff hermes-agent";
           Type = "notify";
           WatchdogSec = "3min";
