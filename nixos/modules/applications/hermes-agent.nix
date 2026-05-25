@@ -125,7 +125,7 @@ NETEOF
         requires = [ "hermes-agent-init.service" ];
         serviceConfig = {
           ExecStart = "${pkgs.systemd}/bin/systemd-nspawn --boot --directory=${containerDir} --keep-unit --link-journal=try-guest --settings=override --machine=hermes-agent";
-          ExecStartPost = "${pkgs.iproute2}/bin/ip addr add ${hostIp}/${toString prefixLength} dev ${vethHost} || true";
+          ExecStartPost = "-${pkgs.iproute2}/bin/ip addr add ${hostIp}/${toString prefixLength} dev ${vethHost}";
           ExecStop = "${pkgs.systemd}/bin/machinectl poweroff hermes-agent";
           Type = "simple";
           KillMode = "process";
