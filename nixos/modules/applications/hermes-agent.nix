@@ -77,6 +77,7 @@ in
             cat > "${containerDir}/etc/systemd/network/80-host0.network" << 'NETEOF'
 [Match]
 Name=host0
+Virtualization=container
 
 [Network]
 Address=${containerIp}/${toString prefixLength}
@@ -125,7 +126,13 @@ NETEOF
         requires = [ "hermes-agent-init.service" ];
         serviceConfig = {
           ExecStart = "${pkgs.systemd}/bin/systemd-nspawn --boot --directory=${containerDir} --keep-unit --link-journal=try-guest --settings=override --machine=hermes-agent";
-          ExecStartPost = "-${pkgs.iproute2}/bin/ip addr add ${hostIp}/${toString prefixLength} dev ${vethHost}";
+          ExecStartPost = "${pkgs.writeShellScript "hermes-agent-veth-ip" ''
+            for i in $(seq 1 50); do
+              ${pkgs.iproute2}/bin/ip link show ${vethHost} >/dev/null 2>&1 && break
+              sleep 0.1
+            done
+            ${pkgs.iproute2}/bin/ip addr add ${hostIp}/${toString prefixLength} dev ${vethHost} 2>/dev/null || true
+          ''}";
           ExecStop = "${pkgs.systemd}/bin/machinectl poweroff hermes-agent";
           Type = "simple";
           KillMode = "process";
