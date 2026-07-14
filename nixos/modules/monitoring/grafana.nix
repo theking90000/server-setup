@@ -172,7 +172,7 @@ in
             auto_login = true;
             client_id = "grafana";
             client_secret = "$__file{/run/credentials/grafana.service/oidc_client_secret}";
-            auth_style = "InHeader";
+            auth_style = "InParams";
             scopes = "openid profile email groups";
             auth_url = "${config.infra.kanidm.url}/ui/oauth2";
             token_url = "${config.infra.kanidm.url}/oauth2/token";

@@ -249,6 +249,8 @@
           assert !grafanaSsoNode.config.services.grafana.settings."auth.basic".enabled;
           assert grafanaSsoNode.config.services.grafana.settings."auth.generic_oauth".enabled;
           assert grafanaSsoNode.config.services.grafana.settings."auth.generic_oauth".auto_login;
+          assert
+            grafanaSsoNode.config.services.grafana.settings."auth.generic_oauth".auth_style == "InParams";
           assert builtins.elem "oidc_client_secret:/run/secrets/sso/grafana-client-secret"
             grafanaSsoNode.config.systemd.services.grafana.serviceConfig.LoadCredential;
           mkEvalCheck "grafana-sso" grafanaSsoNode;
