@@ -7,7 +7,7 @@
 #   - infra.nodes            : inventaire complet des noeuds (topologie)
 #
 # Chaque noeud de l'inventaire possède les champs :
-#   - publicIp, vpnIp, ipv6, ipv6_gateway
+#   - publicIp, vpnIp, ipv6, ipv6Gateway
 #   - user, sshKey           : pour le déploiement SSH
 #   - wireguardPublicKey     : clé publique WireGuard (générée par scripts/generate-mesh.sh)
 #   - sshPublicKey           : clé publique SSH pour root authorized_keys
@@ -37,6 +37,10 @@
       lib.types.submodule (
         { name, ... }:
         {
+          imports = [
+            (lib.mkRenamedOptionModule [ "ipv6_gateway" ] [ "ipv6Gateway" ])
+          ];
+
           options = {
             publicIp = lib.mkOption {
               type = lib.types.str;
@@ -57,7 +61,7 @@
               example = "2001:3130:3132:2100::a38c";
             };
 
-            ipv6_gateway = lib.mkOption {
+            ipv6Gateway = lib.mkOption {
               type = lib.types.nullOr lib.types.str;
               default = null;
               description = "Passerelle IPv6 du noeud.";
@@ -132,7 +136,7 @@
           publicIp = "38.10.12.23";
           vpnIp = "10.100.0.1";
           ipv6 = "2001:3130:3132:2100::a38c";
-          ipv6_gateway = "2001:3130:3132:2100::1";
+          ipv6Gateway = "2001:3130:3132:2100::1";
           wireguardPublicKey = "RepSHS/GGSefxJ+IbYxaPJd2XLqMFp+lfV8RAXP7fT0=";
           sshPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...";
         };

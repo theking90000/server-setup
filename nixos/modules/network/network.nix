@@ -6,7 +6,7 @@
 #
 # L'interface publique est lue depuis `infra.nodes.<nom>.publicInterface`
 # (par défaut "ens3" pour OVH). Les paramètres IPv6 sont lus depuis
-# `infra.nodes.<nom>.{ipv6,ipv6_gateway}`.
+# `infra.nodes.<nom>.{ipv6,ipv6Gateway}`.
 # -------------------------------------------------------------------------
 { config, lib, ... }:
 
@@ -33,8 +33,8 @@ in
       ];
     };
 
-    defaultGateway6 = lib.mkIf (node.ipv6_gateway or null != null) {
-      address = node.ipv6_gateway;
+    defaultGateway6 = lib.mkIf (node.ipv6Gateway or null != null) {
+      address = node.ipv6Gateway;
       interface = node.publicInterface;
     };
   };

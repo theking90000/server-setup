@@ -5,7 +5,7 @@
       publicIp = "CHANGEME";
       vpnIp = "CHANGEME";
       ipv6 = "CHANGEME";
-      ipv6_gateway = "CHANGEME";
+      ipv6Gateway = "CHANGEME";
 
       publicInterface = "ens3"; # ← adapter au hardware (eth0, enp0s3, …)
       useDHCP = true; # ← false pour IP statique

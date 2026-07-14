@@ -24,7 +24,7 @@ Cela donne accès aux outils : `colmena`, `just`, et tous les scripts
       publicIp = "51.38.239.124";       # IP publique du VPS
       vpnIp = "10.100.0.1";             # IP WireGuard (unique par nœud)
       ipv6 = "2001:41d0:305:2100::a38c"; # IPv6 (dans le panel OVH)
-      ipv6_gateway = "2001:41d0:305:2100::1"; # Passerelle IPv6
+      ipv6Gateway = "2001:41d0:305:2100::1"; # Passerelle IPv6
 
       publicInterface = "ens3";         # Interface publique (défaut: ens3)
       useDHCP = true;                   # DHCP sur l'interface publique (défaut: true)
