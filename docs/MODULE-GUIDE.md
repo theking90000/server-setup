@@ -83,12 +83,14 @@ Every application module follows this shape:
 }:
 
 let
+  cfg = config.infra.myapp;
   tag = "applications/myapp";
   enabled = services.hasTag tag;
-  cfg = config.infra.myapp;
+  port = 8080;
+  dataDir = "/var/lib/myapp";
 in
 {
-  # ── Options ──────────────────────────────────────────────────────────
+  # Public API
   options.infra.myapp = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -99,47 +101,48 @@ in
     # Add other options here (ports, credentials, etc.)
   };
 
-  # ── Config ───────────────────────────────────────────────────────────
   config = lib.mkMerge [
-
-    # Tier 1 — Always: register the tag (global, no guard)
+    # Module contract
     { infra.registeredTags = [ tag ]; }
 
-    # Tier 2 — Per-node: service activation, ACLs, backup (local)
+    # Local configuration
     (lib.mkIf enabled {
       systemd.services.myapp = { ... };
-      infra.backup.paths = [ "/var/lib/myapp" ];
+      infra.backup.paths = [ dataDir ];
       infra.security.acls = [ {
-        port = 8080;
+        inherit port;
         allowedTags = [ "web-server" ];
         description = "MyApp";
       } ];
     })
 
-    # Tier 3 — Global: public ingress (any node can register)
+    # Fleet-wide contributions
+    {
+      infra.telemetry."myapp" = map (host: {
+        targets = [ "${host}:${toString port}" ];
+        labels = { inherit host; };
+      }) (services.getHostsByTag tag);
+    }
+
     (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."myapp" = {
         url = cfg.url;                                    # auto-extracts domain + path
-        backend = map (ip: "${ip}:8080") (services.getVpnIpsByTag tag);
+        backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
         blockPaths = [ "/metrics" "/private" ];           # paths to 403
       };
     })
 
-    # Tier 4 — Global: telemetry, always; empty list when no nodes tagged
-    {
-      infra.telemetry."myapp" = map (host: {
-        targets = [ "${host}:8080" ];
-        labels = { job = "myapp"; };
-      }) (services.getHostsByTag tag);
-    }
-
-    # Tier 5 — Global: dashboard, guarded on ANY node having the tag
     (lib.mkIf (services.getHostsByTag tag != [ ]) {
       infra.grafana.dashboards = [ ./dashboards/myapp.json ];
     })
   ];
 }
 ```
+
+This order is intentional: API, module contract, local configuration, then
+fleet-wide contributions. Keep it even when some sections are absent so a
+reader can locate the service, ACLs, backup, telemetry and ingress without
+reconstructing each module's layout.
 
 ---
 

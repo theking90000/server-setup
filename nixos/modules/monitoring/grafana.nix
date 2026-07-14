@@ -10,7 +10,7 @@
 # répertoire provisionné dans Grafana.
 #
 # Tags requis : `grafana`
-# Secrets     : `infra.grafana.{password, grafana_secret}` (Colmena)
+# Secrets     : `infra.grafana.{password, grafanaSecret}` (Colmena)
 # -------------------------------------------------------------------------
 {
   config,
@@ -22,8 +22,12 @@
 }:
 
 let
-  enabled = services.hasTag "grafana";
   cfg = config.infra.grafana;
+  tag = "grafana";
+  enabled = services.hasTag tag;
+  port = 3000;
+  dataDir = "/var/lib/grafana/data";
+
   passwordPath =
     if cfg.passwordFile != null then cfg.passwordFile else "/var/lib/secrets/grafana/password";
   secretPath =
@@ -36,10 +40,18 @@ let
     lib.imap0 (i: path: {
       name = "d${builtins.toString i}-${builtins.baseNameOf path}";
       path = path;
-    }) config.infra.grafana.dashboards
+    }) cfg.dashboards
   );
 in
 {
+  imports = [
+    (lib.mkRenamedOptionModule
+      [ "infra" "grafana" "grafana_secret" ]
+      [ "infra" "grafana" "grafanaSecret" ]
+    )
+  ];
+
+  # Public API
   options.infra.grafana = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -65,7 +77,7 @@ in
       description = "Chemin runtime du mot de passe administrateur Grafana.";
     };
 
-    grafana_secret = lib.mkOption {
+    grafanaSecret = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Clé secrète Grafana pour le chiffrement des sessions (secret, déployé via Colmena).";
@@ -89,7 +101,10 @@ in
   };
 
   config = lib.mkMerge [
-    { infra.registeredTags = [ "grafana" ]; }
+    # Module contract
+    { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
     (lib.mkIf enabled {
       assertions = [
         {
@@ -97,8 +112,8 @@ in
           message = "Set exactly one of infra.grafana.password or infra.grafana.passwordFile on nodes tagged grafana.";
         }
         {
-          assertion = (cfg.grafana_secret != null) != (cfg.grafanaSecretFile != null);
-          message = "Set exactly one of infra.grafana.grafana_secret or infra.grafana.grafanaSecretFile on nodes tagged grafana.";
+          assertion = (cfg.grafanaSecret != null) != (cfg.grafanaSecretFile != null);
+          message = "Set exactly one of infra.grafana.grafanaSecret or infra.grafana.grafanaSecretFile on nodes tagged grafana.";
         }
       ];
 
@@ -106,7 +121,7 @@ in
         ops.mkSecretKeys "grafana"
           {
             password = if cfg.passwordFile == null then cfg.password else null;
-            grafana_secret = if cfg.grafanaSecretFile == null then cfg.grafana_secret else null;
+            grafana_secret = if cfg.grafanaSecretFile == null then cfg.grafanaSecret else null;
           }
           [
             "password"
@@ -124,16 +139,16 @@ in
         enable = true;
         settings = {
           server = {
-            http_port = 3000;
+            http_port = port;
             http_addr = services.getVpnIp;
           }
-          // lib.optionalAttrs (config.infra.grafana.url != null) {
-            root_url = config.infra.grafana.url;
+          // lib.optionalAttrs (cfg.url != null) {
+            root_url = cfg.url;
           };
 
           security = {
             admin_password = "$__file{/run/credentials/grafana.service/admin_pwd}";
-            admin_user = config.infra.grafana.user;
+            admin_user = cfg.user;
             secret_key = "$__file{/run/credentials/grafana.service/grafana_secret}";
           };
         };
@@ -157,23 +172,20 @@ in
         }) (services.getHostsByTag "prometheus");
       };
 
-      infra.backup.paths = [ "/var/lib/grafana/data" ];
+      infra.backup.paths = [ dataDir ];
 
+      infra.security.acls = lib.optional (cfg.url != null) {
+        inherit port;
+        allowedTags = [ "web-server" ];
+        description = "Grafana Web Interface";
+      };
     })
-    (lib.mkIf (enabled && config.infra.grafana.url != null) {
-      infra.security.acls = [
-        {
-          port = 3000;
-          allowedTags = [ "web-server" ];
-          description = "Grafana Web Interface";
-        }
-      ];
 
-    })
-    (lib.mkIf (config.infra.grafana.url != null && services.getVpnIpsByTag "grafana" != [ ]) {
+    # Fleet-wide contributions
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."grafana" = {
-        url = config.infra.grafana.url;
-        backend = map (ip: "${ip}:3000") (services.getVpnIpsByTag "grafana");
+        url = cfg.url;
+        backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
       };
     })
   ];

@@ -5,15 +5,21 @@
 }:
 
 let
-  isEnabled = services.hasTag "node-metrics";
+  tag = "node-metrics";
+  enabled = services.hasTag tag;
+  port = 9100;
+  textfileDir = "/var/lib/node_exporter/textfile_collector";
 in
 {
   config = lib.mkMerge [
-    { infra.registeredTags = [ "node-metrics" ]; }
-    (lib.mkIf isEnabled {
+    # Module contract
+    { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
+    (lib.mkIf enabled {
       services.prometheus.exporters.node = {
         enable = true;
-        port = 9100;
+        inherit port;
 
         openFirewall = false;
         listenAddress = services.getVpnIp;
@@ -23,30 +29,31 @@ in
           "processes"
           "textfile"
         ];
-        extraFlags = [ "--collector.textfile.directory=/var/lib/node_exporter/textfile_collector" ];
+        extraFlags = [ "--collector.textfile.directory=${textfileDir}" ];
       };
 
       systemd.tmpfiles.rules = [
-        "d /var/lib/node_exporter/textfile_collector 0755 nobody nogroup"
+        "d ${textfileDir} 0755 nobody nogroup"
       ];
 
       infra.security.acls = [
         {
-          port = 9100;
-          allowedTags = [ "prometheus" ]; # <--- NixOS résoudra les IPs tout seul
+          inherit port;
+          allowedTags = [ "prometheus" ];
           description = "Node Exporter Metrics";
         }
       ];
     })
+
+    # Fleet-wide contributions
     {
       infra.telemetry."node-metrics" = map (host: {
-        targets = [ "${host}:9100" ];
-        labels = {
-          host = host;
-        };
-      }) (services.getHostsByTag "node-metrics");
+        targets = [ "${host}:${toString port}" ];
+        labels = { inherit host; };
+      }) (services.getHostsByTag tag);
     }
-    (lib.mkIf (services.getHostsByTag "node-metrics" != [ ]) {
+
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
       infra.grafana.dashboards = [ ./dashboards/node-exporter.json ];
     })
   ];

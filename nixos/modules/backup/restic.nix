@@ -21,9 +21,11 @@
 }:
 
 let
-  enabled = services.hasTag "backup";
-  p = config.infra.backup.paths;
   cfg = config.infra.restic;
+  tag = "backup";
+  enabled = services.hasTag tag;
+  backupPaths = config.infra.backup.paths;
+
   repositoryPath =
     if cfg.repositoryFile != null then cfg.repositoryFile else "/var/lib/secrets/restic/repository";
   passwordPath =
@@ -31,6 +33,7 @@ let
   envPath = if cfg.envFile != null then cfg.envFile else "/var/lib/secrets/restic/env";
 in
 {
+  # Public API
   options.infra.restic = {
     repository = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -70,7 +73,10 @@ in
   };
 
   config = lib.mkMerge [
-    { infra.registeredTags = [ "backup" ]; }
+    # Module contract
+    { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
     (lib.mkIf enabled {
       assertions = [
         {
@@ -98,7 +104,7 @@ in
 
         repositoryFile = repositoryPath;
         passwordFile = passwordPath;
-        paths = p;
+        paths = backupPaths;
 
         pruneOpts = [
           "--keep-daily 7"
@@ -115,6 +121,8 @@ in
         environmentFile = envPath;
       };
     })
+
+    # Optional local metrics
     (lib.mkIf (enabled && services.hasTag "node-metrics") {
       systemd.services.restic-stats = {
         description = "Générer les métriques Prometheus pour Restic";

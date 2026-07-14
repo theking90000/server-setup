@@ -74,7 +74,7 @@
           [
             {
               infra.grafana.password = "test";
-              infra.grafana.grafana_secret = "test";
+              infra.grafana.grafanaSecret = "test";
             }
           ];
       stableServicesNode =
@@ -115,7 +115,7 @@
               };
               infra.dockerRegistry.accounts = "test:test";
               infra.grafana.password = "test";
-              infra.grafana.grafana_secret = "test";
+              infra.grafana.grafanaSecret = "test";
               infra.restic.repository = "local:/tmp/backup";
               infra.restic.password = "test";
               infra.sncb-insights.package = checkPkgs.writeShellScriptBin "sncb-insights" "exit 0";
