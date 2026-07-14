@@ -115,7 +115,7 @@ if [[ "$OS_NAME" == *NixOS* ]]; then
 fi
 
 scp "${SCP_OPTS[@]}" "$AUTHORIZED_KEYS" "$INFECT_SCRIPT" "$SSH_MODULE" "$TARGET:/tmp/"
-REMOTE_COMMAND="sudo mkdir -p /root/.ssh /etc/nixos && sudo install -m 600 /tmp/server-setup-authorized-keys /root/.ssh/authorized_keys && sudo install -m 644 /tmp/server-setup-ssh.nix /etc/nixos/server-setup-ssh.nix && sudo env NIX_CHANNEL=$NIX_CHANNEL NIXOS_IMPORT=./server-setup-ssh.nix bash /tmp/nixos-infect"
+REMOTE_COMMAND="if [ \"\$(id -u)\" -eq 0 ]; then SUDO=; elif command -v sudo >/dev/null 2>&1; then SUDO=sudo; else echo 'Error: bootstrap user is not root and sudo is unavailable.' >&2; exit 1; fi; \$SUDO mkdir -p /root/.ssh /etc/nixos && \$SUDO install -m 600 /tmp/server-setup-authorized-keys /root/.ssh/authorized_keys && \$SUDO install -m 644 /tmp/server-setup-ssh.nix /etc/nixos/server-setup-ssh.nix && \$SUDO env NIX_CHANNEL=$NIX_CHANNEL NIXOS_IMPORT=./server-setup-ssh.nix bash /tmp/nixos-infect"
 # The fixed remote command is intentionally assembled locally.
 # shellcheck disable=SC2029
 ssh "${SSH_OPTS[@]}" "$TARGET" "$REMOTE_COMMAND" || echo "SSH disconnected while nixos-infect rebooted the host."

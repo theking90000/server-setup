@@ -76,8 +76,10 @@ in
         echo "    2. Edit inventory/nodes.nix — set IPs, tags and SSH key path"
         echo "    3. Edit config/*.nix — set URLs, credentials (search for CHANGEME)"
         echo "    4. nix develop"
-        echo "    5. Run './scripts/infect.sh' for each VPS"
-        echo "    6. just deploy"
+        echo "    5. Run 'infect-server' for each VPS"
+        echo "    6. just prepare"
+        echo "    7. just check"
+        echo "    8. just deploy"
         exit 1
       fi
 
@@ -106,9 +108,11 @@ in
       echo "  1. Edit inventory/nodes.nix — replace all CHANGEME values"
       echo "  2. Edit config/ files — replace all CHANGEME values"
       echo "  3. nix develop"
-      echo "  4. Run './scripts/infect.sh -i <ssh-key> <user>@<ip>' for each VPS"
-      echo "  5. just deploy             # full deployment"
-      echo "  6. just deploy vps1        # single node"
+      echo "  4. Run 'infect-server -i <ssh-key> <user>@<ip>' for each VPS"
+      echo "  5. just prepare"
+      echo "  6. just check              # evaluate without deploying"
+      echo "  7. just deploy             # full deployment"
+      echo "  8. just deploy vps1        # single node"
     '';
   };
 }

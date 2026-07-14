@@ -86,20 +86,39 @@
                 "grafana"
                 "node-metrics"
                 "prometheus"
+                "web-server"
                 "applications/docker-registry"
+                "applications/filesave-server"
                 "applications/gitea"
+                "applications/jellyfin"
                 "applications/ntfy"
                 "applications/reposilite"
+                "applications/sncb-insights"
+                "applications/www"
+                "acme-issuer"
               ];
             };
           }
           [
             {
+              infra.acme = {
+                email = "test@example.test";
+                dnsProvider = "ovh";
+                dnsCredentials = "OVH_APPLICATION_KEY=test";
+                certSyncerPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest";
+                domains = [
+                  {
+                    domain = "example.test";
+                    services = [ "nginx" ];
+                  }
+                ];
+              };
               infra.dockerRegistry.accounts = "test:test";
               infra.grafana.password = "test";
               infra.grafana.grafana_secret = "test";
               infra.restic.repository = "local:/tmp/backup";
               infra.restic.password = "test";
+              infra.sncb-insights.package = checkPkgs.writeShellScriptBin "sncb-insights" "exit 0";
             }
           ];
       fileSecretsNode =
@@ -134,6 +153,11 @@
         mount: mount.where == "/mnt/test"
       ) null fileSecretsNode.config.systemd.mounts;
       rcloneConfigService = fileSecretsNode.config.systemd.services.rclone-config-test;
+      templateNode = mkNode {
+        test = baseNode // {
+          tags = [ ];
+        };
+      } [ ./template/config ];
       templateParsed = import ./template/flake.nix;
     in
     {
@@ -189,11 +213,21 @@
         template =
           assert builtins.isAttrs templateParsed;
           assert builtins.pathExists ./template/inventory/hardware/vps1/hardware.nix;
-          checkPkgs.runCommand "template" { } ''touch "$out"'';
+          mkEvalCheck "template" templateNode;
         infect-parser = checkPkgs.runCommand "infect-parser" { nativeBuildInputs = [ checkPkgs.bash ]; } ''
           bash ${./scripts/test-infect.sh}
           touch "$out"
         '';
+        script-syntax = checkPkgs.runCommand "script-syntax" { nativeBuildInputs = [ checkPkgs.bash ]; } ''
+          for script in ${./scripts}/*.sh; do
+            bash -n "$script"
+          done
+          touch "$out"
+        '';
+        script-packages = checkPkgs.symlinkJoin {
+          name = "script-packages";
+          paths = lib.attrValues (builtins.removeAttrs self.packages.x86_64-linux [ "default" ]);
+        };
       };
     };
 }

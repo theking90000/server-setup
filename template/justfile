@@ -8,6 +8,11 @@ default:
 update-lib:
     nix flake update infra
 
+# Vérifie les sorties du flake puis force l'évaluation complète de chaque nœud
+check:
+    nix flake check --all-systems
+    colmena eval --impure -E '{ nodes, ... }: builtins.mapAttrs (_: node: node.config.system.build.toplevel.drvPath) nodes'
+
 # Génère la configuration Wireguard
 generate-mesh:
     @echo "Génération du réseau Mesh..."
@@ -24,7 +29,10 @@ export-keys:
     export-ssh-key
     generate-key
 
-# La commande ultime : prépare tout et déploie
-deploy target="": generate-mesh adopt-hardware export-keys
+# Prépare les fichiers locaux sans déployer
+prepare: generate-mesh adopt-hardware export-keys
+
+# Prépare puis déploie
+deploy target="": prepare
     @echo "Lancement de Colmena..."
     colmena apply {{ if target == "" { "" } else { "--on " + target } }}

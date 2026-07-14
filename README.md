@@ -112,7 +112,11 @@ nix develop
 # 4. Infecter chaque VPS
 infect-server -i ~/.ssh/id_ed25519 --post-port <port-final> root@<ip>
 
-# 5. Tout déployer
+# 5. Adopter le matériel et vérifier sans déployer
+just prepare
+just check
+
+# 6. Tout déployer
 just deploy
 ```
 

@@ -83,22 +83,29 @@ infect-server -i ~/.ssh/id_ed25519 --post-port <port-final> root@<ip-publique>
 Le serveur redémarre sous NixOS. Le compte `root` est accessible en SSH
 avec la clé utilisée pour l'infection.
 
-### 5. Préparer le déploiement
+### 5. Adopter le matériel et préparer les fichiers locaux
 
 ```sh
-just deploy
+just prepare
 ```
 
-Cette commande exécute automatiquement :
-1. `adopt-hardware` → télécharge les configs matérielles depuis les VPS
-2. `generate-mesh` → génère les clés WireGuard du mesh
-3. `export-ssh-key` → télécharge les clés SSH publiques des hôtes
-4. `generate-key` → génère la clé SSH pour le cert-syncer (ACME)
-5. `colmena apply` → déploie la configuration sur tous les nœuds
+`just prepare` ne déploie rien. Il génère le mesh, adopte le matériel et
+exporte les clés nécessaires.
 
-### 6. Déploiement ciblé (optionnel)
+### 6. Vérifier sans déployer
 
 ```sh
+just check
+```
+
+`nix flake check` vérifie les sorties déclarées par le flake. La seconde
+commande de la recette force en plus l'évaluation complète des `drvPath` de
+tous les nœuds avec Colmena ; elle ne construit ni ne déploie les systèmes.
+
+### 7. Déployer
+
+```sh
+just deploy               # tous les nœuds
 just deploy vps1          # un seul nœud
 ```
 
@@ -126,6 +133,8 @@ just deploy vps1          # un seul nœud
 | Commande             | Description                              |
 |----------------------|------------------------------------------|
 | `just`               | Liste toutes les commandes               |
+| `just check`         | Évalue tous les nœuds sans déployer      |
+| `just prepare`       | Prépare les fichiers locaux              |
 | `just deploy`        | Déploiement complet (tous les nœuds)     |
 | `just deploy vps1`   | Déploiement sur un seul nœud             |
 | `just update-lib`    | Met à jour la librairie publique         |
@@ -138,7 +147,9 @@ just deploy vps1          # un seul nœud
 
 1. Ajoute le nœud dans `inventory/nodes.nix` avec ses IPs et tags
 2. `infect-server -i ~/.ssh/id_ed25519 root@<ip>`
-3. `just deploy`
+3. `just prepare`
+4. `just check`
+5. `just deploy`
 
 Tous les nœuds seront re-déployés avec la nouvelle topologie (WireGuard,
 ACLs, etc.).
