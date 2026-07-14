@@ -6,16 +6,12 @@
 # s'active automatiquement si au moins un mount cible le noeud courant.
 # Pas de tag requis.
 #
-# Les configs rclone (configContent) sont déployées comme secrets
-# via Colmena dans /var/lib/secrets/rclone-sync/<mountName>/rclone.conf.
-# Le token OAuth est extrait puis persisté hors secrets dans
-# /var/lib/rclone-sync/<mountName>/token pour survivre aux redeploys.
-# La couche crypt de rclone est supportée nativement en définissant
-# deux remotes [backend] + [crypt] dans configContent.
-#
-# Pour chaque mount avec configContent, un service systemd rclone-token-<name>
-# prépare le runtime config (secret sans token + token persistant) et sauvegarde
-# le token rafraîchi au démontage.
+# Les configs rclone sont amorcées depuis configContent/configFile vers
+# /var/lib/rclone-sync/<mountName>/rclone.conf. Cette copie persistante et
+# writable est ensuite entièrement gérée par rclone, notamment pour les
+# rafraîchissements OAuth. La couche crypt fonctionne donc sans traitement
+# spécial des lignes token. Pour réamorcer volontairement la configuration,
+# arrêter le montage puis supprimer sa copie persistante.
 #
 # Options de performance avec des défauts agressifs :
 #   - vfsCacheMode = "writes", cacheDir = /var/cache/rclone
@@ -45,23 +41,13 @@ let
   mountedHere = lib.filterAttrs (_: m: builtins.elem nodeName m.targetNodes) cfg.mounts;
   hasMounts = mountedHere != { };
 
-  # Escape un chemin de montage en nom d'unité systemd
-  # "/mnt/backup-s3" → "mnt-backup\\x2ds3"
-  escapeMountUnit =
-    path:
-    let
-      stripped = lib.removePrefix "/" path;
-      withDashes = builtins.replaceStrings [ "/" ] [ "-" ] stripped;
-    in
-    builtins.replaceStrings [ "-" ] [ "\\x2d" ] withDashes;
-
   # Options rclone (key=value) → converties en RCLONE_KEY via args2env
   mkRcloneOptions =
     mountName: mountCfg:
     let
       secretOpt = lib.optional (
         mountCfg.configContent != null || mountCfg.configFile != null
-      ) "config=/run/rclone-sync/${mountName}/rclone.conf";
+      ) "config=/var/lib/rclone-sync/${mountName}/rclone.conf";
 
       cacheOpts =
         lib.optional (mountCfg.vfsCacheMode != "off") "vfs-cache-mode=${mountCfg.vfsCacheMode}"
@@ -112,59 +98,43 @@ let
       after = [
         "network-online.target"
       ]
-      ++ lib.optional hasConfig "rclone-token-${mountName}.service"
+      ++ lib.optional hasConfig "rclone-config-${mountName}.service"
       ++ mountCfg.after;
 
-      requires = lib.optional hasConfig "rclone-token-${mountName}.service";
-      bindsTo = lib.optional hasConfig "rclone-token-${mountName}.service";
+      requires = lib.optional hasConfig "rclone-config-${mountName}.service";
+      bindsTo = lib.optional hasConfig "rclone-config-${mountName}.service";
     };
 
-  mkTokenService =
+  mkConfigService =
     mountName: mountCfg:
     let
-      mountUnit = escapeMountUnit mountCfg.mountPoint;
-      runtimeDir = "/run/rclone-sync/${mountName}";
       stateDir = "/var/lib/rclone-sync/${mountName}";
       secretPath =
         if mountCfg.configFile != null then
           mountCfg.configFile
         else
           "/var/lib/secrets/rclone-sync/${mountName}/rclone.conf";
-      tokenFile = "${stateDir}/token";
-      runtimeConfig = "${runtimeDir}/rclone.conf";
+      persistentConfig = "${stateDir}/rclone.conf";
     in
     {
-      description = "Rclone token manager for ${mountName}";
+      description = "Initialize persistent Rclone config for ${mountName}";
 
       wantedBy = [ "remote-fs.target" ];
-      partOf = [ "${mountUnit}.mount" ];
 
       serviceConfig = {
         Type = "oneshot";
         RemainAfterExit = "yes";
+        StateDirectory = "rclone-sync/${mountName}";
+        StateDirectoryMode = "0700";
+        UMask = "0077";
       };
 
       script = ''
-        mkdir -p ${runtimeDir} ${stateDir}
-
-        if [ -f "${tokenFile}" ]; then
-          # Merge: static config (sans la ligne token) + token persistant
-          grep -v '^token ' "${secretPath}" > "${runtimeConfig}"
-          cat "${tokenFile}" >> "${runtimeConfig}"
-        else
-          # Premier boot : utiliser le secret tel quel (contient le token initial)
-          cp "${secretPath}" "${runtimeConfig}"
+        # ponytail: seed once; rclone owns every later token refresh.
+        if [ ! -s "${persistentConfig}" ]; then
+          ${pkgs.coreutils}/bin/install -m 0600 "${secretPath}" "${persistentConfig}"
         fi
-        chmod 0600 "${runtimeConfig}"
-      '';
-
-      postStop = ''
-        if [ -f "${runtimeConfig}" ] && grep -q '^token ' "${runtimeConfig}" 2>/dev/null; then
-          grep '^token ' "${runtimeConfig}" > "${tokenFile}.tmp" 2>/dev/null || true
-          if [ -s "${tokenFile}.tmp" ]; then
-            mv "${tokenFile}.tmp" "${tokenFile}"
-          fi
-        fi
+        ${pkgs.coreutils}/bin/chmod 0600 "${persistentConfig}"
       '';
     };
 in
@@ -207,13 +177,13 @@ in
               configContent = mkOption {
                 type = types.nullOr types.str;
                 default = null;
-                description = "Configuration rclone (secret — déployé via Colmena). Contient le token OAuth initial pour le premier boot.";
+                description = "Configuration rclone complète, déployée via Colmena et utilisée uniquement pour amorcer la copie persistante absente.";
               };
 
               configFile = mkOption {
                 type = types.nullOr types.str;
                 default = null;
-                description = "Chemin runtime d'une configuration rclone, par exemple un secret sops-nix.";
+                description = "Chemin runtime d'une configuration rclone complète utilisée uniquement pour amorcer la copie persistante absente, par exemple un secret sops-nix.";
               };
 
               vfsCacheMode = mkOption {
@@ -338,13 +308,13 @@ in
       )) true;
     }
 
-    # ═══ Token services (un par mount avec une config) ═══
+    # ═══ Initialisation persistante de la config (un service par mount) ═══
     {
       systemd.services = lib.mkMerge (
         lib.mapAttrsToList (
           mountName: mountCfg:
           mkIf (mountCfg.configContent != null || mountCfg.configFile != null) {
-            "rclone-token-${mountName}" = mkTokenService mountName mountCfg;
+            "rclone-config-${mountName}" = mkConfigService mountName mountCfg;
           }
         ) mountedHere
       );

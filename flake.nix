@@ -130,6 +130,10 @@
               };
             }
           ];
+      rcloneMount = lib.findFirst (
+        mount: mount.where == "/mnt/test"
+      ) null fileSecretsNode.config.systemd.mounts;
+      rcloneConfigService = fileSecretsNode.config.systemd.services.rclone-config-test;
       templateParsed = import ./template/flake.nix;
     in
     {
@@ -170,6 +174,15 @@
         optional-urls = mkEvalCheck "optional-urls" optionalUrlsNode;
         stable-services = mkEvalCheck "stable-services" stableServicesNode;
         file-secrets = mkEvalCheck "file-secrets" fileSecretsNode;
+        rclone-config =
+          assert rcloneMount != null;
+          assert lib.hasInfix "config=/var/lib/rclone-sync/test/rclone.conf" rcloneMount.options;
+          assert builtins.elem "rclone-config-test.service" rcloneMount.requires;
+          assert lib.toList rcloneConfigService.serviceConfig.StateDirectory == [ "rclone-sync/test" ];
+          assert rcloneConfigService.serviceConfig.StateDirectoryMode == "0700";
+          assert rcloneConfigService.serviceConfig.UMask == "0077";
+          assert !builtins.hasAttr "rclone-token-test" fileSecretsNode.config.systemd.services;
+          mkEvalCheck "rclone-config" fileSecretsNode;
         ssh-port =
           assert minimalNode.config.services.openssh.ports == [ 2222 ];
           mkEvalCheck "ssh-port" minimalNode;
