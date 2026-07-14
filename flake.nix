@@ -122,6 +122,12 @@
               infra.restic.passwordFile = "/run/secrets/restic/password";
               infra.restic.envFile = "/run/secrets/restic/env";
               infra.wireguard.privateKeyFile = "/run/secrets/wireguard/private";
+              infra.rcloneSync.mounts.test = {
+                mountPoint = "/mnt/test";
+                targetNodes = [ "test" ];
+                remoteName = "test";
+                configFile = "/run/secrets/rclone/test";
+              };
             }
           ];
       templateParsed = import ./template/flake.nix;

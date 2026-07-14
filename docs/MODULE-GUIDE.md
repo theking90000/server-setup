@@ -671,6 +671,10 @@ The plaintext value and its `*File` alternative are mutually exclusive. This
 keeps the public module independent from sops-nix, agenix, or any other secret
 provider.
 
+Rclone follows the same compatibility rule with `configContent` (legacy) and
+`configFile` (runtime secret path). This only changes secret delivery; token
+refresh behavior remains unchanged.
+
 ### 8.3 Consuming secrets in the service
 
 **Method A** — Systemd `LoadCredential` (recommended for single-file secrets):
