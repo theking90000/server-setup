@@ -121,12 +121,15 @@ Le guide du dépôt généré se trouve dans
 ### Modules spéciaux
 
 Ces modules fonctionnent, mais ne font pas partie du check synthétique
-« services stables » :
+« services stables ». Kanidm possède un check SSO dédié :
 
 | Activation | Pourquoi il est spécial |
 |---|---|
 | `kanidm` | Provisioning d'identité, OAuth2 et LDAPS |
 | `infra.rcloneSync.mounts` | Montages ciblés par `targetNodes`, sans tag |
+
+L'administration des comptes, credentials et groupes Kanidm est détaillée
+dans le [`guide CLI Kanidm`](docs/KANIDM-CLI.md).
 
 ## Lire un module en une minute
 
@@ -209,6 +212,7 @@ Les commandes suivantes sont fournies par le dev shell :
 ├── scripts/                  # commandes distribuées par le flake
 ├── template/                 # squelette du dépôt privé
 ├── docs/
+│   ├── KANIDM-CLI.md         # administrer comptes et groupes Kanidm
 │   └── MODULE-GUIDE.md       # écrire et comprendre un module
 └── AGENTS.md                 # modèle du dépôt pour les agents de code
 ```
@@ -223,8 +227,9 @@ nix flake check --all-systems
 just check
 ```
 
-Les checks stables excluent volontairement Kanidm et Rclone. Une
-évaluation réussie ne remplace pas un déploiement canari pour ces composants.
+Le check « services stables » exclut volontairement Kanidm et Rclone. Le check
+`grafana-sso` couvre séparément le provisioning Kanidm et l'intégration
+Grafana. Une évaluation réussie ne remplace pas un déploiement canari.
 
 ## Vers une V2 plus lisible
 
