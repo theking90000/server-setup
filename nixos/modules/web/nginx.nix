@@ -19,51 +19,58 @@
 }:
 
 let
-  TAG = "web-server";
-  enabled = services.hasTag TAG;
+  cfg = config.infra.ingress;
+  tag = "web-server";
+  enabled = services.hasTag tag;
+  metricsPort = 9113;
+
   getVal = local: global: if local != null then local else global;
 
-  # --- URL parsing ---
   # "https://example.com/app"  → { domain = "example.com"; path = "/app"; }
   # "https://example.com"      → { domain = "example.com"; path = null; }
-  parseUrl = url:
+  parseUrl =
+    url:
     let
       m = builtins.match "https?://([^/]+)(/.*)?" url;
     in
-      if m == null then throw "Invalid ingress URL: ${url}"
-      else {
+    if m == null then
+      throw "Invalid ingress URL: ${url}"
+    else
+      {
         domain = builtins.elemAt m 0;
         path = builtins.elemAt m 1;
       };
 
-  # --- Resolve domain + path for each ingress entry ---
-  resolveSite = name: site:
+  resolveSite =
+    name: site:
     let
       parsed =
         if site.url != null then
           parseUrl site.url
         else if site.domain != null then
-          { domain = site.domain; path = site.path; }
-        else throw "Ingress entry '${name}': either 'url' or 'domain' is required.";
+          {
+            domain = site.domain;
+            path = site.path;
+          }
+        else
+          throw "Ingress entry '${name}': either 'url' or 'domain' is required.";
     in
-      site // {
-        _name = name;
-        _domain = parsed.domain;
-        _path = parsed.path;
-      };
+    site
+    // {
+      _name = name;
+      _domain = parsed.domain;
+      _path = parsed.path;
+    };
 
-  # All resolved ingress entries as a list
-  resolvedEntries = lib.mapAttrsToList resolveSite config.infra.ingress;
-
-  # Group by effective domain
+  resolvedEntries = lib.mapAttrsToList resolveSite cfg;
   ingressByDomain = lib.groupBy (e: e._domain) resolvedEntries;
-
 in
 {
   config = lib.mkMerge [
-    { infra.registeredTags = [ TAG ]; }
+    # Module contract
+    { infra.registeredTags = [ tag ]; }
 
-    # --- Nginx core config ---
+    # Local configuration
     (lib.mkIf enabled {
       services.nginx = {
         enable = true;
@@ -91,7 +98,9 @@ in
         default = true;
         rejectSSL = true;
         http2 = false;
-        locations."/" = { return = "444"; };
+        locations."/" = {
+          return = "444";
+        };
       };
 
       # VTS metrics on VPN
@@ -99,7 +108,7 @@ in
         listen = [
           {
             addr = services.getVpnIp;
-            port = 9113;
+            port = metricsPort;
           }
         ];
         locations."/metrics" = {
@@ -117,31 +126,32 @@ in
 
       infra.security.acls = [
         {
-          port = 9113;
+          port = metricsPort;
           allowedTags = [ "prometheus" ];
           description = "NGINX VTS Metrics";
         }
       ];
     })
 
-    # --- Ingress → upstreams + virtualHosts (if enabled AND at least one ingress entry) ---
-    (lib.mkIf (enabled && config.infra.ingress != { }) {
+    # Local ingress aggregation
+    (lib.mkIf (enabled && cfg != { }) {
 
       # Upstreams : un par entrée ingress (même nom de clé)
       services.nginx.upstreams = lib.mapAttrs (name: site: {
         servers = lib.genAttrs site.backend (addr: { });
-      }) config.infra.ingress;
+      }) cfg;
 
       # ACME domains : dédupliqués par domaine effectif
       infra.acme.domains =
         let
           domainNames = lib.unique (
-            map (e: e._domain) (
-              builtins.filter (e: e.sslCertificate == null) resolvedEntries
-            )
+            map (e: e._domain) (builtins.filter (e: e.sslCertificate == null) resolvedEntries)
           );
         in
-          map (d: { domain = d; services = [ "nginx" ]; }) domainNames;
+        map (d: {
+          domain = d;
+          services = [ "nginx" ];
+        }) domainNames;
 
       # VirtualHosts : un par domaine effectif, avec locations par chemin
       services.nginx.virtualHosts = lib.mapAttrs (
@@ -150,56 +160,58 @@ in
           primaryEntry = builtins.head entries;
           certName = getVal primaryEntry.sslCertificate domain;
         in
-          {
-            serverName = domain;
-            forceSSL = true;
+        {
+          serverName = domain;
+          forceSSL = true;
 
-            sslCertificate = "/var/lib/acme/${certName}/fullchain.pem";
-            sslCertificateKey = "/var/lib/acme/${certName}/key.pem";
-            sslTrustedCertificate = "/var/lib/acme/${certName}/chain.pem";
+          sslCertificate = "/var/lib/acme/${certName}/fullchain.pem";
+          sslCertificateKey = "/var/lib/acme/${certName}/key.pem";
+          sslTrustedCertificate = "/var/lib/acme/${certName}/chain.pem";
 
-            extraConfig = ''
-              error_log /var/log/nginx/${domain}_error.log;
-              access_log /var/log/nginx/${domain}_access.log;
-            '';
+          extraConfig = ''
+            error_log /var/log/nginx/${domain}_error.log;
+            access_log /var/log/nginx/${domain}_access.log;
+          '';
 
-            locations = lib.mkMerge (
-              map (
-                entry:
-                let
-                  locPath = if entry._path != null then entry._path else "/";
-                  prefix = if locPath == "/" then "" else locPath;
-                in
-                  {
-                    "${locPath}" = {
-                      proxyPass = "${if entry.backendTls or false then "https" else "http"}://${entry._name}";
-                      proxyWebsockets = true;
-                    }
-                    // lib.optionalAttrs (entry.backendTls or false) {
-                      extraConfig = "proxy_ssl_verify off;";
-                    };
-                  }
-                  // lib.listToAttrs (
-                    map (p: {
-                      name = "${prefix}${p}";
-                      value = { return = "403"; };
-                    }) (entry.blockPaths or [ ])
-                  )
-              ) entries
-            );
-          }
+          locations = lib.mkMerge (
+            map (
+              entry:
+              let
+                locPath = if entry._path != null then entry._path else "/";
+                prefix = if locPath == "/" then "" else locPath;
+              in
+              {
+                "${locPath}" = {
+                  proxyPass = "${if entry.backendTls or false then "https" else "http"}://${entry._name}";
+                  proxyWebsockets = true;
+                }
+                // lib.optionalAttrs (entry.backendTls or false) {
+                  extraConfig = "proxy_ssl_verify off;";
+                };
+              }
+              // lib.listToAttrs (
+                map (p: {
+                  name = "${prefix}${p}";
+                  value = {
+                    return = "403";
+                  };
+                }) (entry.blockPaths or [ ])
+              )
+            ) entries
+          );
+        }
       ) ingressByDomain;
     })
 
-    # --- Telemetry ---
+    # Fleet-wide contributions
     {
       infra.telemetry."nginx" = map (host: {
-        targets = [ "${host}:9113" ];
+        targets = [ "${host}:${toString metricsPort}" ];
         labels = { inherit host; };
-      }) (services.getHostsByTag TAG);
+      }) (services.getHostsByTag tag);
     }
 
-    (lib.mkIf (services.getHostsByTag TAG != [ ]) {
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
       infra.grafana.dashboards = [ ./dashboards/nginx-vts.json ];
     })
   ];

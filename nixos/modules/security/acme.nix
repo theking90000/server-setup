@@ -29,12 +29,13 @@
 
 let
   cfg = config.infra.acme;
-
-  issuer = services.hasTag "acme-issuer";
-
-  issuers = services.getHostsByTag "acme-issuer";
+  tag = "acme-issuer";
+  isIssuer = services.hasTag tag;
+  issuerHosts = services.getHostsByTag tag;
+  hasDomains = cfg.domains != [ ];
 
   getVal = local: global: if local != null then local else global;
+  certName = domain: lib.replaceStrings [ "*" ] [ "_" ] domain;
 
   dnsCredentialsPath =
     if cfg.dnsCredentialsFile != null then
@@ -56,6 +57,7 @@ let
   ) cfg.domains;
 in
 {
+  # Public API
   options.infra.acme = {
     email = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -138,8 +140,11 @@ in
   };
 
   config = lib.mkMerge [
-    { infra.registeredTags = [ "acme-issuer" ]; }
-    (lib.mkIf (cfg.domains != [ ]) {
+    # Module contract
+    { infra.registeredTags = [ tag ]; }
+
+    # Local configuration shared by issuers and consumers
+    (lib.mkIf hasDomains {
       users.groups.cert-syncer = { };
 
       users.users.acme = {
@@ -152,7 +157,8 @@ in
 
       users.groups.acme = { };
     })
-    (lib.mkIf (issuer && cfg.domains != [ ]) {
+    # Local issuer configuration
+    (lib.mkIf (isIssuer && hasDomains) {
       assertions = [
         {
           assertion = cfg.email != null;
@@ -192,11 +198,11 @@ in
 
       security.acme = {
         acceptTerms = true;
-        defaults.email = getVal cfg.email cfg.email;
+        defaults.email = cfg.email;
 
         certs = lib.mkMerge (
           map (certOpts: {
-            "${lib.replaceStrings [ "*" ] [ "_" ] certOpts.domain}" = {
+            "${certName certOpts.domain}" = {
               dnsProvider = getVal certOpts.dnsProvider cfg.dnsProvider;
               credentialsFile = getVal certOpts.credentialsFile dnsCredentialsPath;
 
@@ -220,18 +226,19 @@ in
         builtins.concatMap (
           d:
           let
-            certName = lib.replaceStrings [ "*" ] [ "_" ] d.domain;
+            name = certName d.domain;
           in
           map (svc: {
             "${svc}" = {
-              wants = [ "acme-${certName}.service" ];
-              after = [ "acme-${certName}.service" ];
+              wants = [ "acme-${name}.service" ];
+              after = [ "acme-${name}.service" ];
             };
           }) (d.services)
         ) cfg.domains
       );
     })
-    (lib.mkIf (!issuer && cfg.domains != [ ] && issuers != [ ]) {
+    # Local consumer configuration
+    (lib.mkIf (!isIssuer && hasDomains && issuerHosts != [ ]) {
       assertions = [
         {
           assertion = (cfg.certSyncerPrivateKey != null) != (cfg.certSyncerPrivateKeyFile != null);
@@ -273,7 +280,7 @@ in
 
             script = ''
               DOMAIN="$1"
-              ISSUERS="${lib.concatStringsSep " " issuers}"
+              ISSUERS="${lib.concatStringsSep " " issuerHosts}"
 
               # On définit une fonction pour faire le boulot
               do_sync() {
@@ -363,7 +370,7 @@ in
         }
         (lib.mkMerge (
           map (d: {
-            "sync-cert-reload-${lib.replaceStrings [ "*" ] [ "_" ] d.domain}" = {
+            "sync-cert-reload-${certName d.domain}" = {
               description = "Reload services after certificate sync";
               serviceConfig.Type = "oneshot";
               serviceConfig.User = "root";
@@ -372,14 +379,15 @@ in
                 ${d.postRun}
                 ${"systemctl --no-block try-reload-or-restart ${lib.escapeShellArgs d.services}"}
               '';
-              after = [ "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service" ];
-              wantedBy = [ "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service" ];
+              after = [ "sync-cert@${certName d.domain}.service" ];
+              wantedBy = [ "sync-cert@${certName d.domain}.service" ];
             };
           }) cfg.domains
         ))
       ];
     })
-    (lib.mkIf (!issuer && cfg.domains != [ ] && issuers != [ ]) {
+    # Local consumer scheduling
+    (lib.mkIf (!isIssuer && hasDomains && issuerHosts != [ ]) {
       systemd.timers."sync-cert@" = {
         timerConfig = {
           OnBootSec = "1m";
@@ -389,15 +397,13 @@ in
       };
 
       # Activate the timer for each domain
-      systemd.targets.timers.wants = map (
-        d: "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.timer"
-      ) cfg.domains;
+      systemd.targets.timers.wants = map (d: "sync-cert@${certName d.domain}.timer") cfg.domains;
 
       systemd.services = lib.mkMerge (
         builtins.concatMap (
           d:
           let
-            syncUnit = "sync-cert@${lib.replaceStrings [ "*" ] [ "_" ] d.domain}.service";
+            syncUnit = "sync-cert@${certName d.domain}.service";
           in
           map (svc: {
             "${svc}" = {
