@@ -30,6 +30,7 @@ let
   tag = "kanidm";
   enabled = services.hasTag tag;
   cfg = config.infra.kanidm;
+  sso = config.infra.sso;
 
   # ── URL parsing ───────────────────────────────────────────────────────
   # "https://idm.example.com/auth" → domain = "idm.example.com"
@@ -47,6 +48,68 @@ let
   kanidmIps = services.getVpnIpsByTag tag;
 
   ldapsConfig = cfg.ldapPort != null;
+
+  groupName = clientName: name: "${clientName}_${name}";
+
+  ssoGroups = lib.foldl' lib.recursiveUpdate { } (
+    lib.mapAttrsToList (
+      clientName: client:
+      lib.mapAttrs' (
+        name: _:
+        lib.nameValuePair (groupName clientName name) {
+          members = [ ];
+          overwriteMembers = false;
+        }
+      ) client.groups
+    ) sso
+  );
+
+  claimMaps =
+    clientName: client:
+    let
+      claimNames = lib.unique (
+        lib.concatMap (group: lib.attrNames group.claims) (lib.attrValues client.groups)
+      );
+    in
+    lib.genAttrs claimNames (claim: {
+      joinType = "array";
+      valuesByGroup = lib.mapAttrs' (
+        name: group: lib.nameValuePair (groupName clientName name) group.claims.${claim}
+      ) (lib.filterAttrs (_: group: builtins.hasAttr claim group.claims) client.groups);
+    });
+
+  ssoOauth2 = lib.mapAttrs (clientName: client: {
+    inherit (client)
+      displayName
+      public
+      enableLegacyCrypto
+      preferShortUsername
+      ;
+    originUrl = client.redirectUris;
+    originLanding = client.landingUrl;
+    basicSecretFile = if client.public then null else client.secretFile;
+    allowInsecureClientDisablePkce = !client.pkce;
+    scopeMaps = lib.mapAttrs' (
+      name: _: lib.nameValuePair (groupName clientName name) client.scopes
+    ) client.groups;
+    supplementaryScopeMaps = lib.mapAttrs' (
+      name: group: lib.nameValuePair (groupName clientName name) group.extraScopes
+    ) (lib.filterAttrs (_: group: group.extraScopes != [ ]) client.groups);
+    claimMaps = claimMaps clientName client;
+  }) sso;
+
+  hasProvisioning = cfg.users != { } || cfg.groups != { } || cfg.oauth2 != { } || sso != { };
+  idmAdminPasswordFile = "/run/secrets/kanidm/idm-admin-password";
+
+  kanidmBasePackage =
+    if pkgs ? kanidm_1_10 then
+      pkgs.kanidm_1_10
+    else if pkgs ? kanidm_1_9 then
+      pkgs.kanidm_1_9
+    else
+      pkgs.kanidm_1_8;
+
+  kanidmPackage = if sso == { } then kanidmBasePackage else kanidmBasePackage.withSecretProvisioning;
 
   # ── OAuth2 clients → kanidm provision ──
   oidcConfig = lib.mapAttrsToList (name: client: {
@@ -174,15 +237,24 @@ in
   config = lib.mkMerge [
     { infra.registeredTags = [ tag ]; }
 
+    (lib.mkIf enabled {
+      assertions = [
+        {
+          assertion = cfg.url != null;
+          message = "infra.kanidm.url is required on nodes tagged kanidm.";
+        }
+      ];
+    })
+
     # ── Kanidm server (per-node, URL required) ──
     (lib.mkIf (enabled && cfg.url != null) {
       services.kanidm.enableServer = true;
 
       environment.systemPackages = [
-        pkgs.kanidm_1_10
+        kanidmPackage
       ];
 
-      services.kanidm.package = pkgs.kanidm_1_10;
+      services.kanidm.package = kanidmPackage;
 
       services.kanidm.serverSettings = {
         bindaddress = "${services.getVpnIp}:${toString cfg.port}";
@@ -194,6 +266,12 @@ in
 
       services.kanidm.clientSettings = {
         uri = cfg.url;
+      };
+
+      services.kanidm.provision = {
+        enable = hasProvisioning;
+        instanceUrl = "https://${services.getVpnIp}:${toString cfg.port}";
+        acceptInvalidCerts = true;
       };
 
       infra.acme.domains = [
@@ -278,6 +356,16 @@ in
           };
         }) oidcConfig
       );
+    })
+
+    # ── Application-owned SSO registry → Kanidm provisioning ──
+    (lib.mkIf (enabled && sso != { }) {
+      services.kanidm.provision = {
+        autoRemove = false;
+        inherit idmAdminPasswordFile;
+      };
+      services.kanidm.provision.groups = ssoGroups;
+      services.kanidm.provision.systems.oauth2 = ssoOauth2;
     })
 
     # ── Ingress (global, guarded by URL + backends) ──

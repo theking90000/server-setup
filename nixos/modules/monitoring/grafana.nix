@@ -27,6 +27,10 @@ let
   enabled = services.hasTag tag;
   port = 3000;
   dataDir = "/var/lib/grafana/data";
+  kanidmAvailable = services.getHostsByTag "kanidm" != [ ];
+  grafanaAvailable = services.getHostsByTag tag != [ ];
+  ssoEnabled = kanidmAvailable && grafanaAvailable && cfg.url != null;
+  ssoSecretFile = "/run/secrets/sso/grafana-client-secret";
 
   passwordPath =
     if cfg.passwordFile != null then cfg.passwordFile else "/var/lib/secrets/grafana/password";
@@ -115,6 +119,10 @@ in
           assertion = (cfg.grafanaSecret != null) != (cfg.grafanaSecretFile != null);
           message = "Set exactly one of infra.grafana.grafanaSecret or infra.grafana.grafanaSecretFile on nodes tagged grafana.";
         }
+        {
+          assertion = !kanidmAvailable || cfg.url != null;
+          message = "infra.grafana.url is required when a node tagged kanidm enables automatic Grafana SSO.";
+        }
       ];
 
       deployment.keys =
@@ -132,7 +140,8 @@ in
         LoadCredential = [
           "admin_pwd:${passwordPath}"
           "grafana_secret:${secretPath}"
-        ];
+        ]
+        ++ lib.optional ssoEnabled "oidc_client_secret:${ssoSecretFile}";
       };
 
       services.grafana = {
@@ -150,6 +159,26 @@ in
             admin_password = "$__file{/run/credentials/grafana.service/admin_pwd}";
             admin_user = cfg.user;
             secret_key = "$__file{/run/credentials/grafana.service/grafana_secret}";
+          };
+        }
+        // lib.optionalAttrs ssoEnabled {
+          "auth.generic_oauth" = {
+            enabled = true;
+            name = "Kanidm";
+            client_id = "grafana";
+            client_secret = "$__file{/run/credentials/grafana.service/oidc_client_secret}";
+            auth_style = "InHeader";
+            scopes = "openid profile email groups";
+            auth_url = "${config.infra.kanidm.url}/ui/oauth2";
+            token_url = "${config.infra.kanidm.url}/oauth2/token";
+            api_url = "${config.infra.kanidm.url}/oauth2/openid/grafana/userinfo";
+            use_pkce = true;
+            use_refresh_token = true;
+            allow_sign_up = true;
+            login_attribute_path = "preferred_username";
+            groups_attribute_path = "groups";
+            role_attribute_path = "contains(grafana_role[*], 'Admin') && 'Admin' || contains(grafana_role[*], 'Editor') && 'Editor' || contains(grafana_role[*], 'Viewer') && 'Viewer'";
+            role_attribute_strict = true;
           };
         };
 
@@ -186,6 +215,28 @@ in
       infra.ingress."grafana" = {
         url = cfg.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
+      };
+    })
+
+    # Automatic SSO registration (fleet-wide)
+    (lib.mkIf ssoEnabled {
+      infra.sso.grafana = {
+        displayName = "Grafana";
+        serviceTag = tag;
+        redirectUris = [ "${cfg.url}/login/generic_oauth" ];
+        landingUrl = cfg.url;
+        secretFile = ssoSecretFile;
+        scopes = [
+          "openid"
+          "profile"
+          "email"
+          "groups"
+        ];
+        groups = {
+          viewers.claims.grafana_role = [ "Viewer" ];
+          editors.claims.grafana_role = [ "Editor" ];
+          admins.claims.grafana_role = [ "Admin" ];
+        };
       };
     })
   ];

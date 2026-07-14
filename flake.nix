@@ -149,6 +149,26 @@
               };
             }
           ];
+      grafanaSsoNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [
+                "grafana"
+                "kanidm"
+              ];
+            };
+          }
+          [
+            {
+              infra.grafana = {
+                url = "https://grafana.example.test";
+                passwordFile = "/run/secrets/grafana/password";
+                grafanaSecretFile = "/run/secrets/grafana/secret";
+              };
+              infra.kanidm.url = "https://auth.example.test";
+            }
+          ];
       rcloneMount = lib.findFirst (
         mount: mount.where == "/mnt/test"
       ) null fileSecretsNode.config.systemd.mounts;
@@ -198,6 +218,35 @@
         optional-urls = mkEvalCheck "optional-urls" optionalUrlsNode;
         stable-services = mkEvalCheck "stable-services" stableServicesNode;
         file-secrets = mkEvalCheck "file-secrets" fileSecretsNode;
+        grafana-sso =
+          assert builtins.hasAttr "grafana" grafanaSsoNode.config.infra.sso;
+          assert
+            builtins.attrNames grafanaSsoNode.config.infra.sso.grafana.groups == [
+              "admins"
+              "editors"
+              "viewers"
+            ];
+          assert grafanaSsoNode.config.services.kanidm.provision.enable;
+          assert !grafanaSsoNode.config.services.kanidm.provision.autoRemove;
+          assert grafanaSsoNode.config.services.kanidm.provision.idmAdminPasswordFile == "/run/secrets/kanidm/idm-admin-password";
+          assert !grafanaSsoNode.config.services.kanidm.provision.groups.grafana_admins.overwriteMembers;
+          assert
+            grafanaSsoNode.config.services.kanidm.provision.systems.oauth2.grafana.scopeMaps.grafana_viewers
+            == [
+              "openid"
+              "profile"
+              "email"
+              "groups"
+            ];
+          assert
+            grafanaSsoNode.config.services.kanidm.provision.systems.oauth2.grafana.claimMaps.grafana_role.valuesByGroup.grafana_admins
+            == [
+              "Admin"
+            ];
+          assert grafanaSsoNode.config.services.grafana.settings."auth.generic_oauth".enabled;
+          assert builtins.elem "oidc_client_secret:/run/secrets/sso/grafana-client-secret"
+            grafanaSsoNode.config.systemd.services.grafana.serviceConfig.LoadCredential;
+          mkEvalCheck "grafana-sso" grafanaSsoNode;
         rclone-config =
           assert rcloneMount != null;
           assert lib.hasInfix "config=/var/lib/rclone-sync/test/rclone.conf" rcloneMount.options;
