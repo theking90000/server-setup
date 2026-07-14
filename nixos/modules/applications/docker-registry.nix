@@ -18,13 +18,17 @@
 }:
 
 let
+  cfg = config.infra.dockerRegistry;
   tag = "applications/docker-registry";
   enabled = services.hasTag tag;
-  cfg = config.infra.dockerRegistry;
+  servicePort = 5000;
+  metricsPort = 5001;
+  dataDir = "/var/lib/docker-registry";
   accountsPath =
     if cfg.accountsFile != null then cfg.accountsFile else "/var/lib/secrets/docker-registry/accounts";
 in
 {
+  # Public API
   options.infra.dockerRegistry = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -46,7 +50,10 @@ in
   };
 
   config = lib.mkMerge [
+    # Module contract
     { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
     (lib.mkIf enabled {
       assertions = [
         {
@@ -67,12 +74,12 @@ in
 
       services.dockerRegistry = {
         enable = true;
-        port = 5000;
+        port = servicePort;
         listenAddress = services.getVpnIp;
 
         openFirewall = false;
 
-        storagePath = "/var/lib/docker-registry";
+        storagePath = dataDir;
 
         enableDelete = true;
         enableGarbageCollect = true;
@@ -87,7 +94,7 @@ in
 
           http = {
             debug = {
-              addr = "${services.getVpnIp}:5001";
+              addr = "${services.getVpnIp}:${toString metricsPort}";
               prometheus = {
                 enabled = true;
                 path = "/metrics";
@@ -97,36 +104,37 @@ in
         };
       };
 
-      infra.backup.paths = [ "/var/lib/docker-registry" ];
+      infra.backup.paths = [ dataDir ];
 
       infra.security.acls = [
         {
-          port = 5000;
+          port = servicePort;
           allowedTags = [ "web-server" ];
           description = "Docker registry";
         }
         {
-          port = 5001;
+          port = metricsPort;
           allowedTags = [ "prometheus" ];
           description = "Docker registry metrics";
         }
       ];
 
     })
-    (lib.mkIf (config.infra.dockerRegistry.url != null && services.getVpnIpsByTag tag != [ ]) {
-      infra.ingress."docker-registry" = {
-        url = config.infra.dockerRegistry.url;
-        backend = map (ip: "${ip}:5000") (services.getVpnIpsByTag tag);
-      };
-    })
+
+    # Fleet-wide contributions
     {
       infra.telemetry."docker-registry" = map (host: {
-        targets = [ "${host}:5001" ];
-        labels = {
-          host = host;
-        };
+        targets = [ "${host}:${toString metricsPort}" ];
+        labels = { inherit host; };
       }) (services.getHostsByTag tag);
     }
+
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
+      infra.ingress."docker-registry" = {
+        url = cfg.url;
+        backend = map (ip: "${ip}:${toString servicePort}") (services.getVpnIpsByTag tag);
+      };
+    })
     (lib.mkIf (services.getHostsByTag tag != [ ]) {
       infra.grafana.dashboards = [ ./dashboards/docker-registry.json ];
     })

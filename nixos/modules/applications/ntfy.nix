@@ -18,12 +18,14 @@
 }:
 
 let
+  cfg = config.infra.ntfy;
   tag = "applications/ntfy";
+  enabled = services.hasTag tag;
   port = 3004;
   dataDir = "/var/lib/ntfy-sh/user.db";
-  enabled = services.hasTag tag;
 in
 {
+  # Public API
   options.infra.ntfy = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -39,7 +41,10 @@ in
   };
 
   config = lib.mkMerge [
+    # Module contract
     { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
     (lib.mkIf enabled {
       services.ntfy-sh = {
         enable = true;
@@ -48,16 +53,12 @@ in
           listen-http = "${services.getVpnIp}:${toString port}";
           # NixOS declares base-url as required; use the private endpoint when
           # no public URL is configured.
-          base-url =
-            if config.infra.ntfy.url != null then
-              config.infra.ntfy.url
-            else
-              "http://${services.getVpnIp}:${toString port}";
-          behind-proxy = config.infra.ntfy.url != null;
+          base-url = if cfg.url != null then cfg.url else "http://${services.getVpnIp}:${toString port}";
+          behind-proxy = cfg.url != null;
           enable-metrics = true;
         }
-        // lib.optionalAttrs (config.infra.ntfy.upstream-base-url != null) {
-          upstream-base-url = config.infra.ntfy.upstream-base-url;
+        // lib.optionalAttrs (cfg.upstream-base-url != null) {
+          upstream-base-url = cfg.upstream-base-url;
         };
       };
 
@@ -75,17 +76,17 @@ in
       ];
 
     })
+
+    # Fleet-wide contributions
     {
       infra.telemetry."ntfy" = map (host: {
         targets = [ "${host}:${toString port}" ];
-        labels = {
-          host = host;
-        };
+        labels = { inherit host; };
       }) (services.getHostsByTag tag);
     }
-    (lib.mkIf (config.infra.ntfy.url != null && services.getVpnIpsByTag tag != [ ]) {
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."ntfy" = {
-        url = config.infra.ntfy.url;
+        url = cfg.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
         blockPaths = [ "/metrics" ];
       };

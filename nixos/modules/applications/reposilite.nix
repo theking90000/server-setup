@@ -16,11 +16,14 @@
 }:
 
 let
+  cfg = config.infra.reposilite;
   tag = "applications/reposilite";
-  port = 5002;
   enabled = services.hasTag tag;
+  port = 5002;
+  dataDir = "/var/lib/reposilite";
 in
 {
+  # Public API
   options.infra.reposilite = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -30,11 +33,14 @@ in
   };
 
   config = lib.mkMerge [
+    # Module contract
     { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
     (lib.mkIf enabled {
       services.reposilite = {
         enable = true;
-        workingDirectory = "/var/lib/reposilite";
+        workingDirectory = dataDir;
 
         openFirewall = false;
 
@@ -54,7 +60,7 @@ in
         REPOSILITE_PROMETHEUS_PASSWORD = "password";
       };
 
-      infra.backup.paths = [ "/var/lib/reposilite" ];
+      infra.backup.paths = [ dataDir ];
 
       infra.security.acls = [
         {
@@ -68,21 +74,21 @@ in
       ];
 
     })
+
+    # Fleet-wide contributions
     {
       infra.telemetry."reposilite" = map (host: {
         targets = [ "${host}:${toString port}" ];
-        labels = {
-          host = host;
-        };
+        labels = { inherit host; };
         basic_auth = {
           username = "user";
           password = "password";
         };
       }) (services.getHostsByTag tag);
     }
-    (lib.mkIf (config.infra.reposilite.url != null && services.getVpnIpsByTag tag != [ ]) {
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."reposilite" = {
-        url = config.infra.reposilite.url;
+        url = cfg.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
         blockPaths = [ "/metrics" ];
       };

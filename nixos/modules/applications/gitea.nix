@@ -15,11 +15,14 @@
 }:
 
 let
+  cfg = config.infra.gitea;
   tag = "applications/gitea";
-  port = 3003;
   enabled = services.hasTag tag;
+  port = 3003;
+  dataDir = "/var/lib/gitea";
 in
 {
+  # Public API
   options.infra.gitea = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -35,19 +38,22 @@ in
   };
 
   config = lib.mkMerge [
+    # Module contract
     { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
     (lib.mkIf enabled {
       services.gitea = {
         enable = true;
-        stateDir = "/var/lib/gitea";
+        stateDir = dataDir;
 
         settings = {
           server = {
             HTTP_PORT = port;
             HTTP_ADDR = services.getVpnIp;
           }
-          // lib.optionalAttrs (config.infra.gitea.url != null) {
-            ROOT_URL = config.infra.gitea.url;
+          // lib.optionalAttrs (cfg.url != null) {
+            ROOT_URL = cfg.url;
           };
 
           metrics = {
@@ -55,12 +61,12 @@ in
           };
 
           service = {
-            DISABLE_REGISTRATION = !config.infra.gitea.registrationEnabled;
+            DISABLE_REGISTRATION = !cfg.registrationEnabled;
           };
         };
       };
 
-      infra.backup.paths = [ "/var/lib/gitea" ];
+      infra.backup.paths = [ dataDir ];
 
       infra.security.acls = [
         {
@@ -74,17 +80,17 @@ in
       ];
 
     })
+
+    # Fleet-wide contributions
     {
       infra.telemetry."gitea" = map (host: {
         targets = [ "${host}:${toString port}" ];
-        labels = {
-          host = host;
-        };
+        labels = { inherit host; };
       }) (services.getHostsByTag tag);
     }
-    (lib.mkIf (config.infra.gitea.url != null && services.getVpnIpsByTag tag != [ ]) {
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."gitea" = {
-        url = config.infra.gitea.url;
+        url = cfg.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
         blockPaths = [ "/metrics" ];
       };

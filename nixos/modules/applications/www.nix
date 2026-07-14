@@ -16,7 +16,6 @@
   lib,
   pkgs,
   services,
-  ops,
   ...
 }:
 
@@ -76,6 +75,7 @@ let
   );
 in
 {
+  # Public API
   options.infra.www = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -103,8 +103,10 @@ in
   };
 
   config = lib.mkMerge [
+    # Module contract
     { infra.registeredTags = [ tag ]; }
 
+    # Local configuration
     (lib.mkIf enabled {
       users.users.www-data = {
         isSystemUser = true;
@@ -142,6 +144,7 @@ in
       ];
     })
 
+    # Fleet-wide contributions
     (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."www" = {
         url = cfg.url;

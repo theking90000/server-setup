@@ -19,11 +19,14 @@
 }:
 
 let
+  cfg = config.infra.jellyfin;
   tag = "applications/jellyfin";
-  port = 8096;
   enabled = services.hasTag tag;
+  port = 8096;
+  dataDir = "/var/lib/jellyfin";
 in
 {
+  # Public API
   options.infra.jellyfin = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -33,14 +36,17 @@ in
   };
 
   config = lib.mkMerge [
+    # Module contract
     { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
     (lib.mkIf enabled {
       services.jellyfin = {
         enable = true;
         openFirewall = false;
       };
 
-      infra.backup.paths = [ "/var/lib/jellyfin" ];
+      infra.backup.paths = [ dataDir ];
 
       infra.security.acls = [
         {
@@ -50,9 +56,10 @@ in
         }
       ];
     })
-    (lib.mkIf (config.infra.jellyfin.url != null && services.getVpnIpsByTag tag != [ ]) {
+    # Fleet-wide contributions
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."jellyfin" = {
-        url = config.infra.jellyfin.url;
+        url = cfg.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
       };
     })

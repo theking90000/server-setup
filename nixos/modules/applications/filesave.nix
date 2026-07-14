@@ -19,15 +19,15 @@
 }:
 
 let
-  mon-paquet = pkgs.callPackage ../../pkgs/filesave/filesave-server.nix { };
-
+  cfg = config.infra.filesave;
   tag = "applications/filesave-server";
-  dataDir = "/var/lib/filesave-server";
-  port = 22551;
-
   enabled = services.hasTag tag;
+  port = 22551;
+  dataDir = "/var/lib/filesave-server";
+  package = pkgs.callPackage ../../pkgs/filesave/filesave-server.nix { };
 in
 {
+  # Public API
   options.infra.filesave = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
@@ -37,7 +37,10 @@ in
   };
 
   config = lib.mkMerge [
+    # Module contract
     { infra.registeredTags = [ tag ]; }
+
+    # Local configuration
     (lib.mkIf enabled {
       users.users.filesave = {
         isSystemUser = true;
@@ -65,7 +68,7 @@ in
           StateDirectory = "filesave-server";
           WorkingDirectory = dataDir;
 
-          ExecStart = "${mon-paquet}/bin/filesave-server";
+          ExecStart = "${package}/bin/filesave-server";
 
           Restart = "on-failure";
           RestartSec = "5s";
@@ -87,9 +90,11 @@ in
       infra.backup.paths = [ dataDir ];
 
     })
-    (lib.mkIf (config.infra.filesave.url != null && services.getVpnIpsByTag tag != [ ]) {
+
+    # Fleet-wide contributions
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
       infra.ingress."filesave-server" = {
-        url = config.infra.filesave.url;
+        url = cfg.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
       };
     })
