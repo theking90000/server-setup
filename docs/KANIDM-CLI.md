@@ -224,8 +224,21 @@ kanidm system oauth2 get grafana -D idm_admin
 curl -fsS https://auth.example.com/oauth2/openid/grafana/.well-known/openid-configuration
 ```
 
+Kanidm demande normalement un consentement lors du premier accès et lorsque
+les scopes demandés changent. Pour cette application interne déjà approuvée par
+l'administrateur, désactivez ce consentement après le premier déploiement :
+
+```sh
+kanidm system oauth2 disable-consent-prompt grafana -D idm_admin
+```
+
+Le provisioner Kanidm actuel ne sait pas encore déclarer ce réglage. La commande
+est donc à exécuter une seule fois ; sa valeur est conservée dans la base Kanidm
+et dans ses sauvegardes.
+
+Cette commande est la seule modification manuelle prévue sur le client Grafana.
 Ne lancez pas `reset-basic-secret`, `delete`, `set-name` ou une modification de
-scope sur ce client : Nix en est propriétaire.
+scope : Nix reste propriétaire de sa définition.
 
 ## Récupération avec `kanidmd`
 

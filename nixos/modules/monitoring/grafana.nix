@@ -162,9 +162,14 @@ in
           };
         }
         // lib.optionalAttrs ssoEnabled {
+          auth.disable_login_form = true;
+
+          "auth.basic".enabled = false;
+
           "auth.generic_oauth" = {
             enabled = true;
             name = "Kanidm";
+            auto_login = true;
             client_id = "grafana";
             client_secret = "$__file{/run/credentials/grafana.service/oidc_client_secret}";
             auth_style = "InHeader";
