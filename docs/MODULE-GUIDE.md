@@ -198,7 +198,7 @@ Node "vps1": tag "foo" is not handled by any module. Known tags: [ web-server, g
 | Kind          | Convention                                     | Examples                  |
 |---------------|------------------------------------------------|---------------------------|
 | Core service  | Short descriptive name                         | `web-server`, `backup`, `grafana` |
-| Application   | `applications/<app>`                           | `applications/gitea`, `applications/ntfy`, `applications/hermes-agent` |
+| Application   | `applications/<app>`                           | `applications/gitea`, `applications/ntfy`, `applications/jellyfin` |
 
 ---
 

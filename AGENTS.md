@@ -18,7 +18,7 @@ nixos/
   lib/services.nix          ← _module.args.services (hasTag, getVpnIpsByTag, …)
   lib/ops.nix               ← _module.args.ops (mkSecretKeys)
   modules/
-    applications/           ← docker-registry, gitea, hermes-agent, jellyfin, ntfy, reposilite, filesave, www
+    applications/           ← docker-registry, gitea, jellyfin, ntfy, reposilite, filesave, www
     backup/                 ← restic + backup paths
     monitoring/             ← node-metrics, prometheus, grafana
     web/                    ← nginx + ingress

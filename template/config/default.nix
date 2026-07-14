@@ -5,7 +5,6 @@
     ./filesave/filesave.nix
     ./gitea/gitea.nix
     ./grafana/grafana.nix
-    ./hermes-agent/hermes-agent.nix
     ./jellyfin/jellyfin.nix
     ./kanidm/kanidm.nix
     ./ntfy/ntfy.nix

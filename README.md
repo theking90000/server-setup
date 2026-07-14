@@ -126,7 +126,6 @@ Ces modules fonctionnent, mais ne font pas partie du check synthétique
 | Activation | Pourquoi il est spécial |
 |---|---|
 | `kanidm` | Provisioning d'identité, OAuth2 et LDAPS |
-| `applications/hermes-agent` | Conteneur Debian initialisé à l'exécution |
 | `infra.rcloneSync.mounts` | Montages ciblés par `targetNodes`, sans tag |
 
 ## Lire un module en une minute
@@ -224,11 +223,11 @@ nix flake check --all-systems
 just check
 ```
 
-Les checks stables excluent volontairement Kanidm, Rclone et Hermes. Une
+Les checks stables excluent volontairement Kanidm et Rclone. Une
 évaluation réussie ne remplace pas un déploiement canari pour ces composants.
 
 ## Vers une V2 plus lisible
 
 La V2 ne remplace pas NixOS par une abstraction maison. Elle normalise l'ordre
 et le vocabulaire des modules existants, conserve les API compatibles et traite
-séparément Kanidm, Rclone et Hermes.
+séparément Kanidm et Rclone.
