@@ -1,254 +1,234 @@
 # Server Setup
 
-Automatisation complète d'une infrastructure de serveurs avec **NixOS** et
-[Colmena](https://github.com/zhaofengli/colmena).
+> Une flotte NixOS déclarative, reliée par WireGuard et déployée avec Colmena.
 
-Ce projet permet de gérer une flotte de VPS comme un seul système cohérent :
-les services se découvrent automatiquement entre les nœuds via le réseau VPN
-WireGuard, les ACLs firewall sont générées à partir des tags, les dashboards
-Grafana et les cibles Prometheus s'enregistrent dynamiquement. Chaque module
-sait quels autres nœuds existent au moment du build — pas de configuration
-manuelle des IPs entre services.
+`server-setup` est une bibliothèque publique de modules NixOS pour gérer
+plusieurs serveurs comme un seul système : réseau privé, découverte par tags,
+pare-feu inter-services, ingress HTTPS, sauvegardes et monitoring.
 
-### NixOS
+Le dépôt ne contient ni inventaire réel ni secret. Une infrastructure utilise
+un second dépôt privé, créé depuis [`template/`](template/), qui fournit les
+nœuds, les tags et les valeurs `infra.*`.
 
-[NixOS](https://nixos.org) est une distribution Linux déclarative : toute la
-configuration (paquets, services, utilisateurs, firewall, réseau) est décrite
-dans des fichiers `.nix`. Le système est immuable — chaque déploiement produit
-un nouvel état reproductible. Pas de mutation progressive de `/etc`, pas de
-`apt-get install` oublié. Si ça marche aujourd'hui, ça marchera demain.
+## Pourquoi ce projet ?
 
-### Colmena
+- une seule topologie décrit tous les nœuds ;
+- les flux applicatifs internes passent par le mesh WireGuard ;
+- seul Nginx expose les routes HTTP des applications sur Internet ;
+- ACL, sauvegardes, métriques et dashboards sont déclarés par les modules ;
+- les configurations sont évaluées ensemble puis déployées par Colmena ;
+- le dépôt public reste réutilisable et n'impose aucun gestionnaire de secrets.
 
-[Colmena](https://github.com/zhaofengli/colmena) est un orchestrateur de
-déploiement NixOS multi-nœuds. Il évalue la configuration de chaque nœud
-**en ayant connaissance de tous les autres**, ce qui permet de générer des
-règles réseau, des configs WireGuard et des ACLs inter-nœuds automatiquement.
-Il déploie via SSH, en parallèle, avec rollback automatique en cas d'échec.
+## Le modèle mental
 
-### Cibles matérielles
+Un nœud privé possède des **tags**. Un module public enregistre un tag, puis :
 
-- VPS [OVH](https://www.ovh.com) avec une **IP publique**, provisionnés
-initialement sous **Debian 11**, puis infectés avec NixOS via le script
-`infect-server`. N'importe quel VPS sous Debian 11 (ou 12) avec une IP
-publique fonctionne — les configs hardware sont téléchargées automatiquement
-après l'infection.
+1. active son service sur les nœuds qui portent ce tag ;
+2. écoute sur l'adresse VPN quand le service le permet, sinon limite l'accès
+   au mesh avec les ACL ;
+3. déclare ses besoins annexes : ACL, backup, ingress, télémétrie et dashboard ;
+4. laisse les modules centraux agréger ces déclarations pour toute la flotte.
 
-- Raspberry-Pi auto hébergé, accessible avec une **IP publique** (port TCP 22, UDP 51820 accessibles via redirection de port). Il est possible d'intégrer le système à un raspberrypi autohébergé. Celui-ci nécessite l'ajout du tag "raspberry-pi" dans la configuration, pour configurer les paquets propres au RPI. Pour l'instant seul le raspberry pi 5 est supporté, mais il est possible de modifier le flake.nix du repo privé sans problème. La configuration hardware doit pas contre être modifiée.
-
-### Prérequis
-
-- **Nix** installé sur votre machine locale ([installateur officiel](https://nixos.org/download))
-- Une clé SSH configurée (`~/.ssh/id_ed25519`)
-- Un ou plusieurs VPS Debian 11 accessibles en SSH (port 22)
-
-## Architecture deux dépôts
-
-Ce dépôt est le **dépôt public** — il contient les modules NixOS réutilisables
-(configuration réseau, services, monitoring, sécurité), les scripts de déploiement,
-et le *template* pour créer un dépôt privé.
-
-Le **dépôt privé** contient les secrets, les IPs, les tags et la topologie
-spécifique à votre infrastructure. Il importe ce dépôt public comme input Flake
-et définit les valeurs des options `infra.*`.
-
-```
-┌─ github:theking90000/server-setup (public) ─┐
-│  nixos/modules/   ← modules NixOS            │
-│  template/        ← squelette privé           │
-│  scripts/         ← infect, mesh, bootstrap…  │
-│  flake.nix        ← packages, nixosModules    │
-└──────────────────────────────────────────────┘
-                    ↓ importé par
-┌─ dépôt privé ────────────────────────────────┐
-│  flake.nix        ← input infra + déploiement │
-│  inventory/nodes.nix   ← IPs, tags, topologie │
-│  config/*.nix     ← URLs, credentials (infra.*)│
-│  justfile         ← commandes de déploiement   │
-└──────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+    private["Dépôt privé<br/>nœuds, tags, secrets"] --> modules["Modules publics<br/>options infra.*"]
+    modules --> colmena["Évaluation Colmena<br/>vue complète de la flotte"]
+    colmena --> web["Nœud web-server<br/>Nginx + ACME"]
+    colmena --> apps["Nœuds applicatifs<br/>Gitea, ntfy, Jellyfin…"]
+    colmena --> ops["Nœuds d'exploitation<br/>Prometheus, Grafana, Restic"]
+    web -->|"WireGuard"| apps
+    apps -->|"métriques"| ops
 ```
 
-## Stack déployée
+La subtilité importante est la portée des options NixOS :
 
-Une fois configuré, le projet déploie une infrastructure complète :
+- `lib.mkIf (services.hasTag tag)` configure uniquement le nœud courant ;
+- une télémétrie ou un ingress peut être déclaré globalement afin qu'un autre
+  nœud — Prometheus ou Nginx — le découvre pendant la même évaluation.
 
-| Service      | Rôle                                                                 |
-|--------------|----------------------------------------------------------------------|
-| **Nginx**    | Reverse proxy front-end, exposé sur le port 443 public. Termine le TLS via des certificats Let's Encrypt (ACME) générés automatiquement. Route le trafic vers les services internes via le VPN WireGuard. |
-| **WireGuard**| Mesh VPN reliant tous les nœuds. Chaque service écoute sur son IP VPN, jamais sur l'interface publique. Les ACLs firewall (nftables) sont générées automatiquement à partir des tags. |
-| **Prometheus**| Collecte les métriques de tous les nœuds et services (Node Exporter, Nginx VTS, Gitea, Docker Registry, Ntfy, Reposilite). Les cibles sont auto-découvertes via les tags. |
-| **Grafana**  | Visualise les métriques via des dashboards auto-provisionnés. Chaque module peut fournir ses propres dashboards JSON, injectés dynamiquement. |
-| **Restic**   | Sauvegarde automatique des données de tous les services (Gitea, Docker Registry, Grafana, etc.) vers un stockage S3. |
-| **Gitea**    | Serveur Git auto-hébergé avec métriques Prometheus. |
-| **Docker Registry** | Registre Docker privé avec authentification htpasswd et métriques. |
-| **Ntfy**     | Serveur de notifications push avec métriques. |
-| **Reposilite** | Gestionnaire de dépôts Maven avec métriques. |
-| **FileSave** | Serveur d'hébergement de fichiers. |
-| **Kanidm**   | Fournisseur d'identité SSO (OIDC/OAuth2/LDAPS) avec provisioning déclaratif des utilisateurs et clients OAuth2. Gère les certificats ACME via LoadCredential systemd. |
-| **www**     | Serveur de fichiers statiques avec paquet Nix optionnel. |
-| **Jellyfin** | Serveur multimédia avec interface web. La configuration (bibliothèques, utilisateurs) est gérée manuellement (copie de l'ancienne installation). |
-| **Hermes Agent** | Agent IA exécuté dans un conteneur Debian isolé via systemd-nspawn. Réseau restreint (NAT + nftables), limites cgroup (mémoire/CPU), permissions durcies (PrivateUsers, NoNewPrivileges, seccomp). Le conteneur ne peut parler qu'à internet sur les ports autorisés. |
-| **RcloneSync** | Monte des systèmes de fichiers distants (S3, SFTP, WebDAV, …) via rclone. Chaque mount déclare ses nœuds cibles (`targetNodes`) — pas de tag requis. Les configs rclone (credentials, remotes) sont déployées comme secrets. |
+Cette distinction est détaillée dans le
+[`MODULE-GUIDE`](docs/MODULE-GUIDE.md#7b-cross-node-side-effects--global-vs-per-node-guards).
 
-Le tout est orchestré par **Colmena** : un seul `just deploy` suffit pour
-construire et déployer l'intégralité de la configuration sur tous les nœuds
-en parallèle. Les certificats TLS (Let's Encrypt) sont renouvelés
-automatiquement via un mécanisme de synchronisation entre nœuds (cert-syncer).
+## Architecture à deux dépôts
+
+| Dépôt public — celui-ci | Dépôt privé — votre infrastructure |
+|---|---|
+| Modules NixOS réutilisables | Inventaire des nœuds et tags |
+| Helpers `services` et `ops` | URLs et paramètres des applications |
+| Scripts d'installation | Secrets chiffrés ou chemins runtime |
+| Template de démarrage | Flake Colmena réellement déployé |
+| Checks synthétiques | Configurations matérielles des hôtes |
+
+Le dépôt privé importe `nixosModules.default` depuis ce dépôt. Il peut aussi
+ajouter ses propres modules et paquets sans modifier la bibliothèque publique.
 
 ## Démarrage rapide
 
+Prérequis : Nix, une clé SSH et un serveur Debian accessible. L'infection
+remplace le système du serveur ; utilisez-la uniquement sur une machine neuve
+ou sauvegardée.
+
 ```sh
-# 1. Créer un dépôt privé depuis le template
+# 1. Créer le dépôt privé
 nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
-
-# 2. Éditer les valeurs
 cd ./my-infra
-# → inventory/nodes.nix : remplacer tous les CHANGEME (IPs, tags, clé SSH)
-# → config/*.nix        : remplacer tous les CHANGEME (URLs, credentials)
 
-# 3. Entrer dans l'environnement
+# 2. Renseigner inventory/nodes.nix et les fichiers config/
 nix develop
 
-# 4. Infecter chaque VPS
-infect-server -i ~/.ssh/id_ed25519 --post-port <port-final> root@<ip>
+# 3. Infecter chaque VPS ; -p est le port Debian, --post-port le port NixOS
+infect-server -i ~/.ssh/id_ed25519 -p 22 --post-port 22 root@203.0.113.10
 
-# 5. Adopter le matériel et vérifier sans déployer
+# 4. Récupérer le hardware, préparer les clés et évaluer tous les nœuds
 just prepare
 just check
 
-# 6. Tout déployer
+# 5. Déployer après validation
+just deploy vps1
 just deploy
 ```
 
-## Scripts
+Le guide du dépôt généré se trouve dans
+[`template/README.md`](template/README.md).
 
-Tous les scripts sont disponibles dans le `devShell` (via `nix develop` ou `direnv`) :
+## Modules disponibles
 
-| Commande            | Description                                                            |
-|---------------------|------------------------------------------------------------------------|
-| `bootstrap-project` | Crée un nouveau dépôt privé depuis le template                         |
-| `infect-server`     | Infecte un VPS Debian 11 avec NixOS                                    |
-| `adopt-hardware`    | Télécharge les configs hardware depuis les VPS                         |
-| `generate-mesh`     | Génère les clés WireGuard du mesh                                      |
-| `export-ssh-key`    | Télécharge les clés SSH publiques des hôtes                            |
-| `generate-key`      | Génère la clé SSH pour le cert-syncer (ACME)                           |
+### Socle et rôles de flotte
 
-## Fonctionnement
+| Tag ou activation | Fonction |
+|---|---|
+| Toujours actif | Réseau de base, OpenSSH et mesh WireGuard |
+| `web-server` | Nginx public, ingress HTTPS et métriques VTS |
+| `acme-issuer` | Émission ACME et synchronisation des certificats |
+| `backup` | Sauvegardes Restic et restauration |
+| `node-metrics` | Node Exporter et métriques système |
+| `prometheus` | Agrégation des cibles déclarées par les modules |
+| `grafana` | Dashboards et datasources Prometheus provisionnés |
 
-### Tags
+### Applications
 
-Chaque nœud reçoit des **tags** dans `inventory/nodes.nix` (dépôt privé).
-Les modules NixOS s'activent automatiquement en fonction de ces tags via
-`services.hasTag`.
+| Tag | Service |
+|---|---|
+| `applications/docker-registry` | Registre OCI avec authentification |
+| `applications/filesave-server` | Serveur de partage de fichiers |
+| `applications/gitea` | Forge Git |
+| `applications/jellyfin` | Serveur multimédia |
+| `applications/ntfy` | Notifications push |
+| `applications/reposilite` | Dépôts Maven |
+| `applications/www` | Hébergement statique |
+| `applications/sncb-insights` | Intégration spécifique avec paquet fourni par le dépôt privé |
 
-Les tags disponibles et leurs descriptions sont listés dans
+### Modules spéciaux
+
+Ces modules fonctionnent, mais ne font pas partie du check synthétique
+« services stables » :
+
+| Activation | Pourquoi il est spécial |
+|---|---|
+| `kanidm` | Provisioning d'identité, OAuth2 et LDAPS |
+| `applications/hermes-agent` | Conteneur Debian initialisé à l'exécution |
+| `infra.rcloneSync.mounts` | Montages ciblés par `targetNodes`, sans tag |
+
+## Lire un module en une minute
+
+[`gitea.nix`](nixos/modules/applications/gitea.nix) est un bon exemple. Les
+modules applicatifs suivent le même chemin de lecture :
+
+1. `tag`, `enabled`, `port` et `dataDir` donnent le contrat du service ;
+2. `options.infra.<app>` expose les valeurs du dépôt privé ;
+3. `infra.registeredTags` rend les fautes de tag détectables ;
+4. le bloc `lib.mkIf enabled` contient le service local, ses ACL et backups ;
+5. les blocs suivants publient télémétrie, ingress et dashboards à la flotte.
+
+```nix
+let
+  tag = "applications/myapp";
+  enabled = services.hasTag tag;
+  cfg = config.infra.myapp;
+in {
+  options.infra.myapp = { /* API publique */ };
+
+  config = lib.mkMerge [
+    { infra.registeredTags = [ tag ]; }
+
+    (lib.mkIf enabled {
+      services.myapp.enable = true;
+      infra.security.acls = [ /* accès VPN */ ];
+      infra.backup.paths = [ "/var/lib/myapp" ];
+    })
+
+    { infra.telemetry.myapp = /* découverte globale */; }
+
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
+      infra.ingress.myapp = /* route Nginx globale */;
+    })
+  ];
+}
+```
+
+Le squelette complet et les règles de portée sont documentés dans
 [`docs/MODULE-GUIDE.md`](docs/MODULE-GUIDE.md).
 
-### Réseau VPN (WireGuard)
+## Secrets
 
-Tous les nœuds sont reliés par un mesh WireGuard. Chaque service écoute
-sur l'IP VPN (`services.getVpnIp`), jamais sur l'interface publique.
-Seul Nginx (tag `web-server`) expose des ports publiquement (80/443).
+Le dépôt public reste indépendant du backend de secrets :
 
-### Secrets
+- une ancienne valeur texte peut être envoyée par `ops.mkSecretKeys` via
+  `deployment.keys` Colmena ;
+- les options `*File` permettent de fournir un chemin runtime tel que
+  `/run/secrets/...`, notamment avec `sops-nix` dans le dépôt privé ;
+- un module interdit de fournir simultanément la valeur texte et son fichier ;
+- un secret runtime n'est jamais lu avec `builtins.readFile`.
 
-`ops.mkSecretKeys` transmet les secrets aux nœuds via les clés de déploiement
-Colmena, sans les intégrer à la configuration NixOS construite. En revanche,
-un dépôt Flake privé contenant des secrets en clair est lui-même copié dans le
-store local pendant l'évaluation. Le dépôt privé doit donc rester strictement
-privé jusqu'à sa migration vers des fichiers chiffrés (par exemple sops-nix).
+Les valeurs texte évitent le store de la machine cible, mais un dépôt Flake
+privé en clair peut encore être copié dans le store de la machine qui évalue.
+Pour une nouvelle infrastructure, préférez des fichiers chiffrés dans le dépôt
+privé.
 
-Les services lisent les secrets depuis `/var/lib/secrets/<app>/` ou
-via systemd `LoadCredential`.
+## Outils
 
-Les modules sensibles acceptent aussi des options `*File` pointant vers un
-secret runtime, afin que le dépôt privé puisse utiliser sops-nix sans imposer
-ce backend aux utilisateurs du dépôt public.
+Les commandes suivantes sont fournies par le dev shell :
 
-### Module NixOS
-
-Chaque service est un module dans `nixos/modules/<catégorie>/`.
-Un module :
-1. Déclare ses options (`options.infra.<app>.*`)
-2. Enregistre son tag (`infra.registeredTags`)
-3. S'active conditionnellement (`lib.mkIf enabled`)
-4. S'auto-enregistre auprès des autres services (ingress, ACLs, backup, telemetry, dashboards)
-
-Guide complet : [`docs/MODULE-GUIDE.md`](docs/MODULE-GUIDE.md).
-
-### Modules NixOS customs (dépôt public ou privé)
-
-Vous pouvez créer vos propres modules NixOS (déclarant des options `infra.*`,
-utilisant `services.hasTag`, `ops.mkSecretKeys`, etc.) dans **l'un ou l'autre**
-des deux dépôts :
-
-| Emplacement                                | Usage                                        |
-|--------------------------------------------|----------------------------------------------|
-| `nixos/modules/<catégorie>/` (dépôt public) | Modules réutilisables partagés entre projets |
-| `modules/` (dépôt privé)                    | Modules spécifiques à votre infrastructure   |
-
-Un module suit toujours le même pattern (voir [Guide complet](docs/MODULE-GUIDE.md)) :
-1. Déclare ses options (`options.infra.<app>.*`)
-2. Enregistre son tag (`infra.registeredTags`)
-3. S'active conditionnellement (`lib.mkIf enabled`)
-4. S'auto-enregistre (ingress, ACLs, backup, telemetry, dashboards)
-5. Gère ses secrets via `ops.mkSecretKeys`
-
-Les modules privés s'importent dans le `flake.nix` privé en les ajoutant
-aux `imports` de la fonction `mkNode`.
-
-### Paquets customs et binaires précompilés
-
-Il est possible d'intégrer des binaires précompilés (sans accès au code source)
-comme paquets Nix customs. Créez une dérivation dans `nixos/pkgs/<app>/` qui
-utilise `fetchurl` pour télécharger le binaire et `autoPatchelfHook` pour
-corriger les liens dynamiques.
-
-Exemple : [`nixos/pkgs/filesave/filesave-server.nix`](nixos/pkgs/filesave/filesave-server.nix)
-— un binaire `x86_64-linux` précompilé intégré sans recompilation. Le module
-correspondant dans `nixos/modules/` référence le paquet via `pkgs.callPackage`
-pour l'utiliser dans un service systemd.
-
-Cette technique fonctionne aussi dans le dépôt privé : créez un dossier
-`pkgs/` contenant vos propres dérivations, importez-les dans le `flake.nix`
-privé, et référencez-les dans vos modules via `pkgs.callPackage`.
+| Commande | Rôle |
+|---|---|
+| `bootstrap-project` | Créer un dépôt privé depuis le template |
+| `infect-server` | Remplacer Debian par NixOS |
+| `adopt-hardware` | Récupérer `hardware-configuration.nix` avec root |
+| `generate-mesh` | Créer les clés WireGuard absentes et recalculer les clés publiques |
+| `export-ssh-key` | Dériver les clés publiques depuis `node.sshKey` |
+| `generate-key` | Créer ou republier la clé du cert-syncer |
 
 ## Structure du dépôt
 
-```
-├── flake.nix              ← packages, nixosModules, devShells
-├── hive.nix               ← point d'entrée Colmena (imports dépôt privé)
-├── AGENTS.md              ← instructions pour agents IA
-├── README.md              ← ce fichier
-├── scripts/               ← scripts shell (infect, mesh, bootstrap...)
-├── template/              ← squelette pour bootstrap-project
-├── inventory/             ← exemples pour le dépôt privé
+```text
+.
+├── flake.nix                 # module public, packages et checks
 ├── nixos/
-│   ├── modules/           ← modules NixOS
-│   │   ├── default.nix
-│   │   ├── nodes.nix
-│   │   ├── applications/  ← docker-registry, gitea, hermes-agent, jellyfin, ntfy, reposilite, filesave, www
-│   │   ├── backup/        ← restic
-│   │   ├── monitoring/    ← node-metrics, prometheus, grafana
-│   │   ├── web/           ← nginx + ingress
-│   │   ├── network/       ← wireguard, ssh, rclone-sync
-│   │   └── security/      ← acls, acme
-│   └── lib/               ← services.nix, ops.nix
-├── config/                ← (supprimé — config dans le dépôt privé)
-├── docs/                  ← documentation
-│   └── MODULE-GUIDE.md    ← guide complet d'écriture de module
-└── pkgs/                  ← paquets Nix customs
+│   ├── lib/                  # services.hasTag, découverte et mkSecretKeys
+│   ├── modules/              # applications, réseau, sécurité, web, monitoring
+│   └── pkgs/                 # paquets binaires spécifiques
+├── scripts/                  # commandes distribuées par le flake
+├── template/                 # squelette du dépôt privé
+├── docs/
+│   └── MODULE-GUIDE.md       # écrire et comprendre un module
+└── AGENTS.md                 # modèle du dépôt pour les agents de code
 ```
 
-## Vérification
+## Développer et vérifier
 
 ```sh
-nix flake check --all-systems    # vérifie les paquets et plusieurs configurations synthétiques
+# Dépôt public : modules synthétiques, template et scripts
+nix flake check --all-systems
+
+# Dépôt privé généré : flake puis drvPath de chaque nœud Colmena
+just check
 ```
 
-## Déploiement (depuis le dépôt privé)
+Les checks stables excluent volontairement Kanidm, Rclone et Hermes. Une
+évaluation réussie ne remplace pas un déploiement canari pour ces composants.
 
-```sh
-colmena apply                    # tous les nœuds
-colmena apply --on vps1          # un seul nœud
-```
+## Vers une V2 plus lisible
+
+La V2 ne remplace pas NixOS par une abstraction maison. Elle normalise l'ordre
+et le vocabulaire des modules existants, conserve les API compatibles et traite
+séparément Kanidm, Rclone et Hermes.
