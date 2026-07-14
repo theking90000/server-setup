@@ -102,6 +102,28 @@
               infra.restic.password = "test";
             }
           ];
+      fileSecretsNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [
+                "backup"
+                "grafana"
+                "applications/docker-registry"
+              ];
+            };
+          }
+          [
+            {
+              infra.dockerRegistry.accountsFile = "/run/secrets/docker-registry/accounts";
+              infra.grafana.passwordFile = "/run/secrets/grafana/password";
+              infra.grafana.grafanaSecretFile = "/run/secrets/grafana/secret";
+              infra.restic.repositoryFile = "/run/secrets/restic/repository";
+              infra.restic.passwordFile = "/run/secrets/restic/password";
+              infra.restic.envFile = "/run/secrets/restic/env";
+              infra.wireguard.privateKeyFile = "/run/secrets/wireguard/private";
+            }
+          ];
       templateParsed = import ./template/flake.nix;
     in
     {
@@ -141,6 +163,7 @@
         minimal-module = mkEvalCheck "minimal-module" minimalNode;
         optional-urls = mkEvalCheck "optional-urls" optionalUrlsNode;
         stable-services = mkEvalCheck "stable-services" stableServicesNode;
+        file-secrets = mkEvalCheck "file-secrets" fileSecretsNode;
         ssh-port =
           assert minimalNode.config.services.openssh.ports == [ 2222 ];
           mkEvalCheck "ssh-port" minimalNode;

@@ -27,31 +27,40 @@ let
   peerNames = builtins.attrNames (builtins.removeAttrs nodes [ nodeName ]);
 in
 {
-  networking.firewall.allowedUDPPorts = [ 51820 ];
-
-  networking.wireguard.interfaces.wg0 = lib.mkIf (me.vpnIp != null) {
-    ips = [ "${me.vpnIp}/24" ];
-    listenPort = 51820;
-
-    privateKeyFile = "/var/lib/secrets/wg-key";
-
-    peers = map (peerName:
-      let
-        peer = nodes.${peerName};
-      in
-      {
-        publicKey = peer.wireguardPublicKey;
-        allowedIPs = [ "${peer.vpnIp}/32" ];
-        endpoint = "${peer.publicIp}:51820";
-        persistentKeepalive = 25;
-      }
-    ) peerNames;
+  options.infra.wireguard.privateKeyFile = lib.mkOption {
+    type = lib.types.str;
+    default = "/var/lib/secrets/wg-key";
+    description = "Chemin runtime de la clé privée WireGuard.";
   };
 
-  networking.hosts = builtins.listToAttrs (
-    map (n: {
-      name = nodes.${n}.vpnIp;
-      value = [ n ];
-    }) (builtins.attrNames nodes)
-  );
+  config = {
+    networking.firewall.allowedUDPPorts = [ 51820 ];
+
+    networking.wireguard.interfaces.wg0 = lib.mkIf (me.vpnIp != null) {
+      ips = [ "${me.vpnIp}/24" ];
+      listenPort = 51820;
+
+      privateKeyFile = config.infra.wireguard.privateKeyFile;
+
+      peers = map (
+        peerName:
+        let
+          peer = nodes.${peerName};
+        in
+        {
+          publicKey = peer.wireguardPublicKey;
+          allowedIPs = [ "${peer.vpnIp}/32" ];
+          endpoint = "${peer.publicIp}:51820";
+          persistentKeepalive = 25;
+        }
+      ) peerNames;
+    };
+
+    networking.hosts = builtins.listToAttrs (
+      map (n: {
+        name = nodes.${n}.vpnIp;
+        value = [ n ];
+      }) (builtins.attrNames nodes)
+    );
+  };
 }

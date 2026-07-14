@@ -20,6 +20,9 @@
 let
   tag = "applications/docker-registry";
   enabled = services.hasTag tag;
+  cfg = config.infra.dockerRegistry;
+  accountsPath =
+    if cfg.accountsFile != null then cfg.accountsFile else "/var/lib/secrets/docker-registry/accounts";
 in
 {
   options.infra.dockerRegistry = {
@@ -34,6 +37,12 @@ in
       default = null;
       description = "Fichier htpasswd pour l'authentification du registre Docker.";
     };
+
+    accountsFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Chemin runtime du fichier htpasswd.";
+    };
   };
 
   config = lib.mkMerge [
@@ -41,16 +50,18 @@ in
     (lib.mkIf enabled {
       assertions = [
         {
-          assertion = config.infra.dockerRegistry.accounts != null;
-          message = "infra.dockerRegistry.accounts is required on nodes tagged applications/docker-registry.";
+          assertion = (cfg.accounts != null) != (cfg.accountsFile != null);
+          message = "Set exactly one of infra.dockerRegistry.accounts or infra.dockerRegistry.accountsFile on registry nodes.";
         }
       ];
 
-      deployment.keys = ops.mkSecretKeys "docker-registry" config.infra.dockerRegistry [ "accounts" ];
+      deployment.keys = ops.mkSecretKeys "docker-registry" {
+        accounts = if cfg.accountsFile == null then cfg.accounts else null;
+      } [ "accounts" ];
 
       systemd.services.docker-registry.serviceConfig = {
         LoadCredential = [
-          "admin_pwd:/var/lib/secrets/docker-registry/accounts"
+          "admin_pwd:${accountsPath}"
         ];
       };
 

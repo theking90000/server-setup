@@ -157,6 +157,10 @@ privé jusqu'à sa migration vers des fichiers chiffrés (par exemple sops-nix).
 Les services lisent les secrets depuis `/var/lib/secrets/<app>/` ou
 via systemd `LoadCredential`.
 
+Les modules sensibles acceptent aussi des options `*File` pointant vers un
+secret runtime, afin que le dépôt privé puisse utiliser sops-nix sans imposer
+ce backend aux utilisateurs du dépôt public.
+
 ### Module NixOS
 
 Chaque service est un module dans `nixos/modules/<catégorie>/`.

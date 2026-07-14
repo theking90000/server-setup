@@ -23,6 +23,12 @@
 let
   enabled = services.hasTag "backup";
   p = config.infra.backup.paths;
+  cfg = config.infra.restic;
+  repositoryPath =
+    if cfg.repositoryFile != null then cfg.repositoryFile else "/var/lib/secrets/restic/repository";
+  passwordPath =
+    if cfg.passwordFile != null then cfg.passwordFile else "/var/lib/secrets/restic/password";
+  envPath = if cfg.envFile != null then cfg.envFile else "/var/lib/secrets/restic/env";
 in
 {
   options.infra.restic = {
@@ -32,16 +38,34 @@ in
       description = "URL du repository Restic (ex: s3:https://s3.filebase.com/XXX).";
     };
 
+    repositoryFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Chemin runtime contenant l'URL du repository Restic.";
+    };
+
     password = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Mot de passe de chiffrement du repository Restic (secret).";
     };
 
+    passwordFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Chemin runtime contenant le mot de passe Restic.";
+    };
+
     env = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Variables d'environnement pour l'accès au repository (AWS keys, etc.) (secret).";
+    };
+
+    envFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Chemin runtime facultatif des variables d'environnement Restic.";
     };
   };
 
@@ -50,22 +74,30 @@ in
     (lib.mkIf enabled {
       assertions = [
         {
-          assertion = config.infra.restic.repository != null;
-          message = "infra.restic.repository is required on nodes tagged backup.";
+          assertion = (cfg.repository != null) != (cfg.repositoryFile != null);
+          message = "Set exactly one of infra.restic.repository or infra.restic.repositoryFile on backup nodes.";
         }
         {
-          assertion = config.infra.restic.password != null;
-          message = "infra.restic.password is required on nodes tagged backup.";
+          assertion = (cfg.password != null) != (cfg.passwordFile != null);
+          message = "Set exactly one of infra.restic.password or infra.restic.passwordFile on backup nodes.";
+        }
+        {
+          assertion = cfg.env == null || cfg.envFile == null;
+          message = "Set at most one of infra.restic.env or infra.restic.envFile.";
         }
       ];
 
-      deployment.keys = ops.mkSecretKeys "restic" config.infra.restic null;
+      deployment.keys = ops.mkSecretKeys "restic" {
+        repository = if cfg.repositoryFile == null then cfg.repository else null;
+        password = if cfg.passwordFile == null then cfg.password else null;
+        env = if cfg.envFile == null then cfg.env else null;
+      } null;
 
       services.restic.backups."host-backup" = {
         initialize = true;
 
-        repositoryFile = "/var/lib/secrets/restic/repository";
-        passwordFile = "/var/lib/secrets/restic/password";
+        repositoryFile = repositoryPath;
+        passwordFile = passwordPath;
         paths = p;
 
         pruneOpts = [
@@ -79,8 +111,8 @@ in
           Persistent = true;
         };
       }
-      // lib.optionalAttrs (config.infra.restic.env != null) {
-        environmentFile = "/var/lib/secrets/restic/env";
+      // lib.optionalAttrs (cfg.env != null || cfg.envFile != null) {
+        environmentFile = envPath;
       };
     })
     (lib.mkIf (enabled && services.hasTag "node-metrics") {

@@ -36,10 +36,22 @@ let
 
   getVal = local: global: if local != null then local else global;
 
+  dnsCredentialsPath =
+    if cfg.dnsCredentialsFile != null then
+      cfg.dnsCredentialsFile
+    else
+      "/var/lib/secrets/acme/dnsCredentials";
+  certSyncerPrivateKeyPath =
+    if cfg.certSyncerPrivateKeyFile != null then
+      cfg.certSyncerPrivateKeyFile
+    else
+      "/var/lib/secrets/syncer.key";
+
   missingDnsCredentials = lib.any (
     domain:
     getVal domain.dnsProvider cfg.dnsProvider != null
     && domain.credentialsFile == null
+    && cfg.dnsCredentialsFile == null
     && cfg.dnsCredentials == null
   ) cfg.domains;
 in
@@ -100,10 +112,22 @@ in
       description = "Variables d'environnement pour l'authentification au provider DNS.";
     };
 
+    dnsCredentialsFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Chemin runtime des credentials DNS ACME.";
+    };
+
     certSyncerPrivateKey = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Clé privée SSH de l'utilisateur cert-syncer (pour rsync des certificats).";
+    };
+
+    certSyncerPrivateKeyFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Chemin runtime de la clé privée SSH du cert-syncer.";
     };
 
     certSyncerPublicKey = lib.mkOption {
@@ -139,12 +163,18 @@ in
           message = "infra.acme.dnsCredentials or a per-domain credentialsFile is required when using a DNS provider.";
         }
         {
+          assertion = cfg.dnsCredentials == null || cfg.dnsCredentialsFile == null;
+          message = "Set at most one of infra.acme.dnsCredentials or infra.acme.dnsCredentialsFile.";
+        }
+        {
           assertion = cfg.certSyncerPublicKey != null;
           message = "infra.acme.certSyncerPublicKey is required on an ACME issuer with configured domains.";
         }
       ];
 
-      deployment.keys = ops.mkSecretKeys "acme" cfg [ "dnsCredentials" ];
+      deployment.keys = ops.mkSecretKeys "acme" {
+        dnsCredentials = if cfg.dnsCredentialsFile == null then cfg.dnsCredentials else null;
+      } [ "dnsCredentials" ];
 
       users.users.cert-syncer = {
         isNormalUser = true;
@@ -168,7 +198,7 @@ in
           map (certOpts: {
             "${lib.replaceStrings [ "*" ] [ "_" ] certOpts.domain}" = {
               dnsProvider = getVal certOpts.dnsProvider cfg.dnsProvider;
-              credentialsFile = getVal certOpts.credentialsFile "/var/lib/secrets/acme/dnsCredentials";
+              credentialsFile = getVal certOpts.credentialsFile dnsCredentialsPath;
 
               group = "cert-syncer";
 
@@ -204,19 +234,23 @@ in
     (lib.mkIf (!issuer && cfg.domains != [ ] && issuers != [ ]) {
       assertions = [
         {
-          assertion = cfg.certSyncerPrivateKey != null;
-          message = "infra.acme.certSyncerPrivateKey is required to synchronize certificates from an ACME issuer.";
+          assertion = (cfg.certSyncerPrivateKey != null) != (cfg.certSyncerPrivateKeyFile != null);
+          message = "Set exactly one of infra.acme.certSyncerPrivateKey or infra.acme.certSyncerPrivateKeyFile on certificate consumers.";
         }
       ];
 
-      deployment.keys."syncer.key" = lib.mkIf (cfg.certSyncerPrivateKey != null) {
-        text = cfg.certSyncerPrivateKey;
-        destDir = "/var/lib/secrets";
-        user = "root";
-        group = "root";
-        permissions = "0400";
-        name = "syncer.key";
-      };
+      deployment.keys =
+        lib.optionalAttrs (cfg.certSyncerPrivateKeyFile == null && cfg.certSyncerPrivateKey != null)
+          {
+            "syncer.key" = {
+              text = cfg.certSyncerPrivateKey;
+              destDir = "/var/lib/secrets";
+              user = "root";
+              group = "root";
+              permissions = "0400";
+              name = "syncer.key";
+            };
+          };
 
       systemd.services = lib.mkMerge [
         {
@@ -231,7 +265,7 @@ in
             serviceConfig.Type = "oneshot";
             serviceConfig.User = "acme";
             serviceConfig.Group = "acme";
-            serviceConfig.LoadCredential = [ "ssh-key:/var/lib/secrets/syncer.key" ];
+            serviceConfig.LoadCredential = [ "ssh-key:${certSyncerPrivateKeyPath}" ];
             wants = [ "network-online.target" ];
             after = [ "network-online.target" ];
 

@@ -649,8 +649,9 @@ This generates:
 - `/var/lib/secrets/myapp/password` (mode 0400)
 - `/var/lib/secrets/myapp/apiKey` (mode 0400)
 
-The files are uploaded by Colmena **over SSH at deploy time** — the values
-never enter the Nix store.
+The files are uploaded by Colmena **over SSH at deploy time**. This keeps them
+out of the built system, but not out of the local store copy of a plaintext
+private Flake.
 
 | Parameter     | Description                                             |
 |---------------|---------------------------------------------------------|
@@ -658,6 +659,17 @@ never enter the Nix store.
 | `config.infra.myapp` | Attrset of options (contains both secrets and non-secrets) |
 | `[...]`       | List of **keys to deploy** (only these fields)             |
 | `null`        | Instead of a list: deploy ALL fields from the attrset      |
+
+For encrypted repositories, prefer the corresponding runtime path option when
+the module provides one (`passwordFile`, `accountsFile`, `envFile`, etc.):
+
+```nix
+infra.myapp.passwordFile = "/run/secrets/myapp/password";
+```
+
+The plaintext value and its `*File` alternative are mutually exclusive. This
+keeps the public module independent from sops-nix, agenix, or any other secret
+provider.
 
 ### 8.3 Consuming secrets in the service
 

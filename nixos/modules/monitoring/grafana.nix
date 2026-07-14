@@ -23,6 +23,14 @@
 
 let
   enabled = services.hasTag "grafana";
+  cfg = config.infra.grafana;
+  passwordPath =
+    if cfg.passwordFile != null then cfg.passwordFile else "/var/lib/secrets/grafana/password";
+  secretPath =
+    if cfg.grafanaSecretFile != null then
+      cfg.grafanaSecretFile
+    else
+      "/var/lib/secrets/grafana/grafana_secret";
 
   dashboardsDir = pkgs.linkFarm "grafana-dashboards" (
     lib.imap0 (i: path: {
@@ -51,10 +59,22 @@ in
       description = "Mot de passe administrateur Grafana (secret, déployé via Colmena).";
     };
 
+    passwordFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Chemin runtime du mot de passe administrateur Grafana.";
+    };
+
     grafana_secret = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
       description = "Clé secrète Grafana pour le chiffrement des sessions (secret, déployé via Colmena).";
+    };
+
+    grafanaSecretFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Chemin runtime de la clé secrète Grafana.";
     };
 
     dashboards = lib.mkOption {
@@ -73,24 +93,30 @@ in
     (lib.mkIf enabled {
       assertions = [
         {
-          assertion = config.infra.grafana.password != null;
-          message = "infra.grafana.password is required on nodes tagged grafana.";
+          assertion = (cfg.password != null) != (cfg.passwordFile != null);
+          message = "Set exactly one of infra.grafana.password or infra.grafana.passwordFile on nodes tagged grafana.";
         }
         {
-          assertion = config.infra.grafana.grafana_secret != null;
-          message = "infra.grafana.grafana_secret is required on nodes tagged grafana.";
+          assertion = (cfg.grafana_secret != null) != (cfg.grafanaSecretFile != null);
+          message = "Set exactly one of infra.grafana.grafana_secret or infra.grafana.grafanaSecretFile on nodes tagged grafana.";
         }
       ];
 
-      deployment.keys = ops.mkSecretKeys "grafana" config.infra.grafana [
-        "password"
-        "grafana_secret"
-      ];
+      deployment.keys =
+        ops.mkSecretKeys "grafana"
+          {
+            password = if cfg.passwordFile == null then cfg.password else null;
+            grafana_secret = if cfg.grafanaSecretFile == null then cfg.grafana_secret else null;
+          }
+          [
+            "password"
+            "grafana_secret"
+          ];
 
       systemd.services.grafana.serviceConfig = {
         LoadCredential = [
-          "admin_pwd:/var/lib/secrets/grafana/password"
-          "grafana_secret:/var/lib/secrets/grafana/grafana_secret"
+          "admin_pwd:${passwordPath}"
+          "grafana_secret:${secretPath}"
         ];
       };
 
