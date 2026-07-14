@@ -70,6 +70,11 @@ Never in `/nix/store`. `ops.mkSecretKeys` → Colmena `deployment.keys` →
 uploaded via SSH at deploy time. Read via systemd `LoadCredential` or
 direct file path in `/var/lib/secrets/<app>/`.
 
+In private repositories, `config/` is a strict functional boundary: it may
+only set readable `infra.<app>` choices such as URLs, ports or feature flags.
+SOPS declarations, runtime secret paths, owners, tag guards and systemd details
+belong in the central `secrets/` adapter and are forbidden in `config/`.
+
 ### Bootstrap
 
 New private repos are created from `template/` via the `bootstrap-project`

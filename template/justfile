@@ -10,6 +10,7 @@ update-lib:
 
 # Vérifie les sorties du flake puis force l'évaluation complète de chaque nœud
 check:
+    @if rg -n '(sops\.|sopsFile|deployment\.keys|/run/secrets|builtins\.readFile|dnsCredentials[[:space:]]*=|accounts[[:space:]]*=|password(File)?[[:space:]]*=|grafanaSecret(File)?[[:space:]]*=|repository(File)?[[:space:]]*=|env(File)?[[:space:]]*=|config(Content|File)[[:space:]]*=)' config; then echo 'Erreur: config/ doit contenir uniquement des choix infra.* non techniques.' >&2; exit 1; fi
     nix flake check --all-systems
     colmena eval --impure -E '{ nodes, ... }: builtins.mapAttrs (_: node: node.config.system.build.toplevel.drvPath) nodes'
 

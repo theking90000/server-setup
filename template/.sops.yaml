@@ -1,0 +1,12 @@
+keys:
+  # Remplacer par la clé Age de l'administrateur.
+  - &admin age1CHANGEME
+  # Ajouter ensuite une clé Age par hôte.
+  - &vps1 age1CHANGEME
+
+creation_rules:
+  - path_regex: secrets/.*\.json$
+    key_groups:
+      - age:
+          - *admin
+          - *vps1

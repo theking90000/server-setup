@@ -73,17 +73,22 @@ ou sauvegardée.
 nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
 cd ./my-infra
 
-# 2. Renseigner inventory/nodes.nix et les fichiers config/
+# 2. Renseigner inventory/nodes.nix et les choix non secrets dans config/
 nix develop
 
 # 3. Infecter chaque VPS ; -p est le port Debian, --post-port le port NixOS
 infect-server -i ~/.ssh/id_ed25519 -p 22 --post-port 22 root@203.0.113.10
 
-# 4. Récupérer le hardware, préparer les clés et évaluer tous les nœuds
+# 4. Récupérer le hardware et préparer les clés
 just prepare
+
+# 5. Configurer .sops.yaml et créer les secrets/*.json chiffrés
+sops secrets/acme.json
+
+# 6. Évaluer tous les nœuds
 just check
 
-# 5. Déployer après validation
+# 7. Déployer après validation
 just deploy vps1
 just deploy
 ```
@@ -186,6 +191,10 @@ Les valeurs texte évitent le store de la machine cible, mais un dépôt Flake
 privé en clair peut encore être copié dans le store de la machine qui évalue.
 Pour une nouvelle infrastructure, préférez des fichiers chiffrés dans le dépôt
 privé.
+
+Dans le template privé, `config/` ne contient que les choix fonctionnels
+`infra.*`. Toute la plomberie SOPS et les options `*File` sont centralisées
+dans `secrets/default.nix`; un check interdit leur retour dans `config/`.
 
 ## Outils
 

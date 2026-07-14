@@ -1,8 +1,3 @@
 {
-  infra.dockerRegistry = {
-    url = "https://CHANGEME";
-    accounts = ''
-      user1:CHANGEME
-    '';
-  };
+  infra.dockerRegistry.url = "https://CHANGEME";
 }

@@ -7,6 +7,11 @@
     infra.url = "github:theking90000/server-setup";
     colmena.url = "github:zhaofengli/colmena";
 
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     nixos-raspberrypi = {
       url = "github:nvmd/nixos-raspberrypi/main";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -19,6 +24,7 @@
       nixpkgs-darwin,
       infra,
       colmena,
+      sops-nix,
       nixos-raspberrypi,
       ...
     }:
@@ -39,7 +45,9 @@
         imports = [
           ./inventory/hardware/${name}/hardware.nix
           ./config
+          ./secrets
           infra.nixosModules.default
+          sops-nix.nixosModules.sops
         ]
         ++ lib.optionals (builtins.elem "raspberry-pi" node.tags) [
           nixos-raspberrypi.nixosModules.raspberry-pi-5.base
@@ -47,18 +55,6 @@
         ];
 
         infra.nodeName = name;
-
-        deployment.keys."wg-key" = {
-          keyFile = ./inventory/wireguard/${name}/private.key;
-          destDir = "/var/lib/secrets";
-          user = "root";
-          group = "root";
-          permissions = "0400";
-          name = "wg-key";
-        };
-
-        infra.acme.certSyncerPrivateKey = builtins.readFile ./inventory/keys/syncer.key;
-        infra.acme.certSyncerPublicKey = builtins.readFile ./inventory/keys/syncer.key.pub;
 
         infra.nodes = lib.mkMerge [
           nodesData.nodes
@@ -137,6 +133,9 @@
               pkgs.jq
               pkgs.wireguard-tools
               pkgs.openssh
+              pkgs.ripgrep
+              pkgs.sops
+              pkgs.ssh-to-age
 
               infra.packages.${system}.infect
               infra.packages.${system}.adopt-hardware
@@ -148,6 +147,7 @@
 
             shellHook = ''
               ${if isMac then "export TMPDIR=/private/tmp" else ""}
+              export SOPS_AGE_KEY_CMD="ssh-to-age -private-key -i $HOME/.ssh/id_ed25519"
               echo "================================================="
               echo " Bienvenue dans l'environnement de déploiement!"
               echo "================================================="

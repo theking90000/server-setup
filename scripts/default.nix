@@ -74,12 +74,13 @@ in
         echo "  After creation:"
         echo "    1. cd <target-directory>"
         echo "    2. Edit inventory/nodes.nix — set IPs, tags and SSH key path"
-        echo "    3. Edit config/*.nix — set URLs, credentials (search for CHANGEME)"
+        echo "    3. Edit config/*.nix — set only non-secret infra.* values"
         echo "    4. nix develop"
         echo "    5. Run 'infect-server' for each VPS"
         echo "    6. just prepare"
-        echo "    7. just check"
-        echo "    8. just deploy"
+        echo "    7. Configure .sops.yaml and create encrypted secrets/*.json"
+        echo "    8. just check"
+        echo "    9. just deploy"
         exit 1
       fi
 
@@ -106,13 +107,14 @@ in
       echo ""
       echo "Next steps:"
       echo "  1. Edit inventory/nodes.nix — replace all CHANGEME values"
-      echo "  2. Edit config/ files — replace all CHANGEME values"
+      echo "  2. Edit config/ files — set only non-secret infra.* values"
       echo "  3. nix develop"
       echo "  4. Run 'infect-server -i <ssh-key> <user>@<ip>' for each VPS"
       echo "  5. just prepare"
-      echo "  6. just check              # evaluate without deploying"
-      echo "  7. just deploy             # full deployment"
-      echo "  8. just deploy vps1        # single node"
+      echo "  6. Configure .sops.yaml and create encrypted secrets/*.json"
+      echo "  7. just check              # evaluate without deploying"
+      echo "  8. just deploy             # full deployment"
+      echo "  9. just deploy vps1        # single node"
     '';
   };
 }

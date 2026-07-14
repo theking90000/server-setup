@@ -228,7 +228,9 @@
             ];
           assert grafanaSsoNode.config.services.kanidm.provision.enable;
           assert !grafanaSsoNode.config.services.kanidm.provision.autoRemove;
-          assert grafanaSsoNode.config.services.kanidm.provision.idmAdminPasswordFile == "/run/secrets/kanidm/idm-admin-password";
+          assert
+            grafanaSsoNode.config.services.kanidm.provision.idmAdminPasswordFile
+            == "/run/secrets/kanidm/idm-admin-password";
           assert !grafanaSsoNode.config.services.kanidm.provision.groups.grafana_admins.overwriteMembers;
           assert
             grafanaSsoNode.config.services.kanidm.provision.systems.oauth2.grafana.scopeMaps.grafana_viewers
@@ -263,6 +265,18 @@
           assert builtins.isAttrs templateParsed;
           assert builtins.pathExists ./template/inventory/hardware/vps1/hardware.nix;
           mkEvalCheck "template" templateNode;
+        template-config-boundary =
+          checkPkgs.runCommand "template-config-boundary"
+            {
+              nativeBuildInputs = [ checkPkgs.ripgrep ];
+            }
+            ''
+              if rg -n '(sops\.|sopsFile|deployment\.keys|/run/secrets|builtins\.readFile|dnsCredentials[[:space:]]*=|accounts[[:space:]]*=|password(File)?[[:space:]]*=|grafanaSecret(File)?[[:space:]]*=|repository(File)?[[:space:]]*=|env(File)?[[:space:]]*=|config(Content|File)[[:space:]]*=)' ${./template/config}; then
+                echo 'template/config must contain only functional infra.* choices' >&2
+                exit 1
+              fi
+              touch "$out"
+            '';
         infect-parser = checkPkgs.runCommand "infect-parser" { nativeBuildInputs = [ checkPkgs.bash ]; } ''
           bash ${./scripts/test-infect.sh}
           touch "$out"

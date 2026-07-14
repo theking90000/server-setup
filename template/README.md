@@ -49,21 +49,24 @@ Cela donne accès aux outils : `colmena`, `just`, et tous les scripts
 
 Édite les fichiers dans `config/` — remplace **tous** les `CHANGEME` :
 
-- `config/acme/acme.nix` → email Let's Encrypt, credentials DNS OVH
-- `config/grafana/grafana.nix` → mot de passe, URL, secret
-- `config/restic/restic.nix` → repo S3, mot de passe, credentials AWS
+- `config/acme/acme.nix` → email Let's Encrypt et provider DNS
+- `config/grafana/grafana.nix` → URL et utilisateur administrateur
 - `config/gitea/gitea.nix` → URL
 - `config/jellyfin/jellyfin.nix` → URL
-- `config/docker-registry/docker-registry.nix` → URL, comptes htpasswd
+- `config/docker-registry/docker-registry.nix` → URL
 - `config/ntfy/ntfy.nix` → URL, upstream
 - `config/reposilite/reposilite.nix` → URL
 - `config/filesave/filesave.nix` → URL
-- `config/kanidm/kanidm.nix` → URL, users OAuth2, LDAPS (optionnel)
+- `config/kanidm/kanidm.nix` → URL et LDAPS optionnel
 - `config/rclone-sync/rclone-sync.nix` → montages rclone (S3, SFTP, …) par nœud
 - `config/www/www.nix` → URL, paquet Nix optionnel
 
 Supprimez les fichiers `config/<app>/<app>.nix` des applications que vous
 n'utilisez pas, et retirez-les de `config/default.nix`.
+
+Règle stricte : `config/` décrit uniquement les choix fonctionnels `infra.*`.
+Les déclarations SOPS, chemins `/run/secrets`, propriétaires et détails systemd
+appartiennent exclusivement à `secrets/`.
 
 ### 3. Mettre à jour la librairie publique
 
@@ -91,7 +94,29 @@ just prepare
 `just prepare` ne déploie rien. Il génère le mesh, adopte le matériel et
 exporte les clés nécessaires.
 
-### 6. Vérifier sans déployer
+### 6. Chiffrer les secrets
+
+Convertis la clé publique de l'administrateur et celles exportées pour les
+hôtes, puis remplace les destinataires dans `.sops.yaml` :
+
+```sh
+ssh-to-age < ~/.ssh/id_ed25519.pub
+ssh-to-age < inventory/keys/vps1/key.pub
+```
+
+Crée ensuite les fichiers nécessaires, par exemple :
+
+```sh
+sops secrets/acme.json
+sops secrets/restic.json
+sops secrets/grafana.json
+sops secrets/kanidm.json
+```
+
+Le schéma complet est documenté dans `secrets/README.md`. Les fichiers SOPS
+chiffrés sont suivis par Git ; les valeurs en clair ne doivent jamais l'être.
+
+### 7. Vérifier sans déployer
 
 ```sh
 just check
@@ -101,7 +126,7 @@ just check
 commande de la recette force en plus l'évaluation complète des `drvPath` de
 tous les nœuds avec Colmena ; elle ne construit ni ne déploie les systèmes.
 
-### 7. Déployer
+### 8. Déployer
 
 ```sh
 just deploy               # tous les nœuds
@@ -113,12 +138,17 @@ just deploy vps1          # un seul nœud
 ```
 ├── flake.nix            ← flake principal (input infra + colmena)
 ├── justfile             ← commandes just (deploy, generate-mesh, etc.)
+├── .sops.yaml           ← destinataires Age autorisés
 ├── .gitignore           ← ignore inventory/keys/ et wireguard/
-├── config/              ← valeurs des options infra.*
+├── config/              ← choix fonctionnels infra.*, sans plomberie
 │   ├── default.nix      ← imports de tous les fichiers de config
 │   ├── acme/acme.nix
 │   ├── grafana/grafana.nix
 │   └── ...
+├── secrets/
+│   ├── default.nix      ← adaptateur technique SOPS → options *File
+│   ├── README.md        ← schéma et procédure
+│   └── *.json           ← secrets chiffrés, un fichier par application
 ├── inventory/
 │   ├── nodes.nix        ← topologie (IPs, tags, clé SSH)
 │   ├── hardware/        ← placeholder suivi, remplacé par adopt-hardware
@@ -156,9 +186,10 @@ ACLs, etc.).
 ## Ajouter une nouvelle application
 
 1. Ajoute le tag correspondant au nœud dans `inventory/nodes.nix`
-2. Crée le fichier de config dans `config/<app>/<app>.nix`
+2. Crée dans `config/<app>/<app>.nix` uniquement les choix `infra.<app>`
 3. Ajoute l'import dans `config/default.nix`
-4. `just deploy`
+4. Si nécessaire, branche son fichier chiffré dans `secrets/default.nix`
+5. `just check`, puis `just deploy`
 
 ## Paquets customs et modules privés
 
