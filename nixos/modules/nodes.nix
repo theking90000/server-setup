@@ -67,7 +67,7 @@
             user = lib.mkOption {
               type = lib.types.str;
               default = "root";
-              description = "Utilisateur SSH pour le déploiement.";
+              description = "Option historique conservée pour compatibilité. Le déploiement post-infection utilise root.";
             };
 
             sshKey = lib.mkOption {
@@ -79,7 +79,7 @@
             sshPort = lib.mkOption {
               type = lib.types.int;
               default = 22;
-              description = "Port SSH du noeud.";
+              description = "Port SSH final NixOS du noeud, utilisé par sshd et Colmena.";
             };
 
             wireguardPublicKey = lib.mkOption {
@@ -153,6 +153,6 @@
       }) node.tags
     ) config.infra.nodes
   );
-  
+
   config.infra.registeredTags = [ "raspberry-pi" ]; # Pré enregistrer le tag raspberrypi
 }

@@ -9,7 +9,7 @@
 
     nixos-raspberrypi = {
       url = "github:nvmd/nixos-raspberrypi/main";
-      inputs.nixpkgs.follows = "nixpkgs"; 
+      inputs.nixpkgs.follows = "nixpkgs";
     };
   };
 
@@ -40,9 +40,10 @@
           ./inventory/hardware/${name}/hardware.nix
           ./config
           infra.nixosModules.default
-        ] ++ lib.optionals (builtins.elem "raspberry-pi" node.tags) [
-            nixos-raspberrypi.nixosModules.raspberry-pi-5.base
-            nixos-raspberrypi.nixosModules.raspberry-pi-5.page-size-16k
+        ]
+        ++ lib.optionals (builtins.elem "raspberry-pi" node.tags) [
+          nixos-raspberrypi.nixosModules.raspberry-pi-5.base
+          nixos-raspberrypi.nixosModules.raspberry-pi-5.page-size-16k
         ];
 
         infra.nodeName = name;
@@ -87,53 +88,41 @@
           # Le default obligatoire pour calmer l'évaluateur de Colmena
           nixpkgs = import nixpkgs { system = "x86_64-linux"; };
 
-          # La magie noire pour le multi-architecture : on instancie dynamiquement 
+          # La magie noire pour le multi-architecture : on instancie dynamiquement
           # nixpkgs pour CHAQUE noeud, avec son overlay associé.
-          nodeNixpkgs = builtins.mapAttrs (name: node:
+          nodeNixpkgs = builtins.mapAttrs (
+            name: node:
             let
               isPi = builtins.elem "raspberry-pi" node.tags;
-            in import nixpkgs {
+            in
+            import nixpkgs {
               system = if isPi then "aarch64-linux" else "x86_64-linux";
-              overlays = [
-                (final: prev: {
-                  sncb-insights = sncb-insights.packages.${final.system}.sncb-insights;
-                })
-               ] ++ lib.optionals isPi [
-                 nixos-raspberrypi.overlays.pkgs
-                 nixos-raspberrypi.overlays.bootloader
-                 nixos-raspberrypi.overlays.vendor-kernel
-                 nixos-raspberrypi.overlays.vendor-firmware
-                 nixos-raspberrypi.overlays.kernel-and-firmware
-                 nixos-raspberrypi.overlays.vendor-pkgs
-               ] ++ lib.optionals isPi [
-                 # Fix: le ffmpeg_7-full du RPi overlay (ffmpeg_7-rpi.nix)
-                 # n'accepte pas les arguments `version`/`source` dont a besoin
-                 # jellyfin-ffmpeg via .override {}. On remplace jellyfin-ffmpeg
-                 # par la version vanilla de nixpkgs (sans accélération hardware
-                 # RPi, mais fonctionnelle).
-                 (final: prev: {
-                   jellyfin-ffmpeg = nixpkgs.legacyPackages.aarch64-linux.jellyfin-ffmpeg;
-                 })
-               ];
+              overlays =
+                lib.optionals isPi [
+                  nixos-raspberrypi.overlays.pkgs
+                  nixos-raspberrypi.overlays.bootloader
+                  nixos-raspberrypi.overlays.vendor-kernel
+                  nixos-raspberrypi.overlays.vendor-firmware
+                  nixos-raspberrypi.overlays.kernel-and-firmware
+                  nixos-raspberrypi.overlays.vendor-pkgs
+                ]
+                ++ lib.optionals isPi [
+                  # Fix: le ffmpeg_7-full du RPi overlay (ffmpeg_7-rpi.nix)
+                  # n'accepte pas les arguments `version`/`source` dont a besoin
+                  # jellyfin-ffmpeg via .override {}. On remplace jellyfin-ffmpeg
+                  # par la version vanilla de nixpkgs (sans accélération hardware
+                  # RPi, mais fonctionnelle).
+                  (final: prev: {
+                    jellyfin-ffmpeg = nixpkgs.legacyPackages.aarch64-linux.jellyfin-ffmpeg;
+                  })
+                ];
             }
           ) nodesData.nodes;
 
-          specialArgs = {
-            inherit nixos-raspberrypi infra sncb-insights;
-            # Tu peux aussi juste faire : inputs = inputs; (si tu passes "inputs" depuis tes arguments de outputs)
-          };
+          specialArgs = { inherit nixos-raspberrypi infra; };
         };
       }
       // builtins.mapAttrs mkNode nodesData.nodes;
-
-      nixosConfigurations.validate = nixpkgs.lib.nixosSystem {
-        system = "x86_64-linux";
-        modules = [
-          infra.nixosModules.default
-          colmena.nixosModules.validate
-          { infra = import ./inventory/nodes.nix; }
-        ];
-      };
 
       devShells = forAllSystems (system: {
         default =

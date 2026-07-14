@@ -46,12 +46,17 @@ in
 
         settings = {
           listen-http = "${services.getVpnIp}:${toString port}";
-          base-url = config.infra.ntfy.url;
-
-          behind-proxy = true;
-
+          # NixOS declares base-url as required; use the private endpoint when
+          # no public URL is configured.
+          base-url =
+            if config.infra.ntfy.url != null then
+              config.infra.ntfy.url
+            else
+              "http://${services.getVpnIp}:${toString port}";
+          behind-proxy = config.infra.ntfy.url != null;
           enable-metrics = true;
-
+        }
+        // lib.optionalAttrs (config.infra.ntfy.upstream-base-url != null) {
           upstream-base-url = config.infra.ntfy.upstream-base-url;
         };
       };

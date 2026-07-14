@@ -24,9 +24,8 @@
       prefix: secrets: filterList:
       let
         filteredSecrets =
-          if filterList == null
-          then secrets
-          else lib.filterAttrs (n: _: lib.elem n filterList) secrets;
+          if filterList == null then secrets else lib.filterAttrs (n: _: lib.elem n filterList) secrets;
+        nonNullSecrets = lib.filterAttrs (_: value: value != null) filteredSecrets;
       in
       lib.mapAttrs' (
         name: value:
@@ -38,6 +37,6 @@
           group = "root";
           permissions = "0400";
         }
-      ) filteredSecrets;
+      ) nonNullSecrets;
   };
 }

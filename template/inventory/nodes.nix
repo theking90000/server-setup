@@ -7,12 +7,11 @@
       ipv6 = "CHANGEME";
       ipv6_gateway = "CHANGEME";
 
-      publicInterface = "ens3";    # ← adapter au hardware (eth0, enp0s3, …)
-      useDHCP = true;              # ← false pour IP statique
+      publicInterface = "ens3"; # ← adapter au hardware (eth0, enp0s3, …)
+      useDHCP = true; # ← false pour IP statique
 
-      user = "root";
       sshKey = "CHANGEME";
-      sshPort = 22;
+      sshPort = 22; # Port SSH final après infection
 
       tags = [
         "web-server"

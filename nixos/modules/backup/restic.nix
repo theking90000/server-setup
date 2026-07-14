@@ -48,6 +48,17 @@ in
   config = lib.mkMerge [
     { infra.registeredTags = [ "backup" ]; }
     (lib.mkIf enabled {
+      assertions = [
+        {
+          assertion = config.infra.restic.repository != null;
+          message = "infra.restic.repository is required on nodes tagged backup.";
+        }
+        {
+          assertion = config.infra.restic.password != null;
+          message = "infra.restic.password is required on nodes tagged backup.";
+        }
+      ];
+
       deployment.keys = ops.mkSecretKeys "restic" config.infra.restic null;
 
       services.restic.backups."host-backup" = {
@@ -55,8 +66,6 @@ in
 
         repositoryFile = "/var/lib/secrets/restic/repository";
         passwordFile = "/var/lib/secrets/restic/password";
-        environmentFile = "/var/lib/secrets/restic/env";
-
         paths = p;
 
         pruneOpts = [
@@ -69,6 +78,9 @@ in
           OnCalendar = "03:00";
           Persistent = true;
         };
+      }
+      // lib.optionalAttrs (config.infra.restic.env != null) {
+        environmentFile = "/var/lib/secrets/restic/env";
       };
     })
     (lib.mkIf (enabled && services.hasTag "node-metrics") {

@@ -22,8 +22,8 @@ JSON_DATA=$(nix-instantiate --eval --json --strict -E "import $TOPOLOGY_FILE" | 
 for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     PUBLIC_IP=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].publicIp")
 
-    USER=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].user // \"root\"")
     SSH_KEY=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].sshKey // \"~/.ssh/id_ed25519\"")
+    SSH_KEY="${SSH_KEY/#\~/$HOME}"
     SSH_PORT=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].sshPort // 22")
 
     DEST_DIR="$HARDWARE_DIR/$HOSTNAME"
@@ -34,7 +34,7 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     echo "📡 Connexion à $HOSTNAME ($PUBLIC_IP)..."
     
     # On essaie de récupérer hardware-configuration.nix
-    if scp -i "$SSH_KEY" -P "$SSH_PORT" "$USER@$PUBLIC_IP:/etc/nixos/hardware-configuration.nix" "$DEST_FILE" > /dev/null 2>&1; then
+    if scp -i "$SSH_KEY" -P "$SSH_PORT" "root@$PUBLIC_IP:/etc/nixos/hardware-configuration.nix" "$DEST_FILE" > /dev/null 2>&1; then
         echo "✅ Hardware config récupérée pour $HOSTNAME"
     else
         echo "⚠️  Impossible de récupérer la config pour $HOSTNAME (Peut-être pas encore infecté ?)"

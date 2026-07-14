@@ -9,10 +9,101 @@
 
   outputs =
     {
+      self,
       nixpkgs,
       nixpkgs-darwin,
+      colmena,
       ...
     }:
+    let
+      lib = nixpkgs.lib;
+      checkPkgs = nixpkgs.legacyPackages.x86_64-linux;
+      mkNode =
+        nodes: extraModules:
+        lib.nixosSystem {
+          system = "x86_64-linux";
+          specialArgs = {
+            name = "test";
+            inherit nodes;
+          };
+          modules = [
+            colmena.nixosModules.deploymentOptions
+            self.nixosModules.default
+            {
+              boot.loader.grub.devices = [ "nodev" ];
+              fileSystems."/" = {
+                device = "none";
+                fsType = "tmpfs";
+              };
+              infra.nodeName = "test";
+              infra.nodes = nodes;
+              system.stateVersion = "25.11";
+            }
+          ]
+          ++ extraModules;
+        };
+      baseNode = {
+        publicIp = "192.0.2.1";
+        vpnIp = "10.100.0.1";
+        sshPort = 2222;
+      };
+      mkEvalCheck =
+        name: node:
+        let
+          drvPath = builtins.unsafeDiscardStringContext node.config.system.build.toplevel.drvPath;
+        in
+        checkPkgs.runCommand name { } ''
+          echo ${lib.escapeShellArg drvPath} > "$out"
+        '';
+      minimalNode = mkNode {
+        test = baseNode // {
+          tags = [ ];
+        };
+      } [ ];
+      optionalUrlsNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [
+                "grafana"
+                "applications/gitea"
+                "applications/ntfy"
+              ];
+            };
+          }
+          [
+            {
+              infra.grafana.password = "test";
+              infra.grafana.grafana_secret = "test";
+            }
+          ];
+      stableServicesNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [
+                "backup"
+                "grafana"
+                "node-metrics"
+                "prometheus"
+                "applications/docker-registry"
+                "applications/gitea"
+                "applications/ntfy"
+                "applications/reposilite"
+              ];
+            };
+          }
+          [
+            {
+              infra.dockerRegistry.accounts = "test:test";
+              infra.grafana.password = "test";
+              infra.grafana.grafana_secret = "test";
+              infra.restic.repository = "local:/tmp/backup";
+              infra.restic.password = "test";
+            }
+          ];
+      templateParsed = import ./template/flake.nix;
+    in
     {
       nixosModules.default = {
         imports = [
@@ -45,5 +136,22 @@
               default = scripts.infect;
             }
           );
+
+      checks.x86_64-linux = {
+        minimal-module = mkEvalCheck "minimal-module" minimalNode;
+        optional-urls = mkEvalCheck "optional-urls" optionalUrlsNode;
+        stable-services = mkEvalCheck "stable-services" stableServicesNode;
+        ssh-port =
+          assert minimalNode.config.services.openssh.ports == [ 2222 ];
+          mkEvalCheck "ssh-port" minimalNode;
+        template =
+          assert builtins.isAttrs templateParsed;
+          assert builtins.pathExists ./template/inventory/hardware/vps1/hardware.nix;
+          checkPkgs.runCommand "template" { } ''touch "$out"'';
+        infect-parser = checkPkgs.runCommand "infect-parser" { nativeBuildInputs = [ checkPkgs.bash ]; } ''
+          bash ${./scripts/test-infect.sh}
+          touch "$out"
+        '';
+      };
     };
 }

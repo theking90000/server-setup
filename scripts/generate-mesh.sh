@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -e
+umask 077
 
 # Chemins
 TOPOLOGY_FILE="./inventory/nodes.nix"
@@ -36,8 +37,10 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
     if [ ! -f "$PRIV_KEY" ]; then
         echo "🔑 Génération des clés pour $HOSTNAME..."
         # wg genkey outputs a newline, which can cause issues in some contexts. Trimming it:
-        wg genkey | tr -d '\n' | tee "$PRIV_KEY" | wg pubkey | tr -d '\n' > "$PUB_KEY"
+        wg genkey | tr -d '\n' > "$PRIV_KEY"
     fi
+
+    wg pubkey < "$PRIV_KEY" | tr -d '\n' > "$PUB_KEY"
 
 echo "✅ Clés générées pour $HOSTNAME : $PRIV_KEY et $PUB_KEY"
 done

@@ -35,6 +35,13 @@ let
   issuers = services.getHostsByTag "acme-issuer";
 
   getVal = local: global: if local != null then local else global;
+
+  missingDnsCredentials = lib.any (
+    domain:
+    getVal domain.dnsProvider cfg.dnsProvider != null
+    && domain.credentialsFile == null
+    && cfg.dnsCredentials == null
+  ) cfg.domains;
 in
 {
   options.infra.acme = {
@@ -122,6 +129,21 @@ in
       users.groups.acme = { };
     })
     (lib.mkIf (issuer && cfg.domains != [ ]) {
+      assertions = [
+        {
+          assertion = cfg.email != null;
+          message = "infra.acme.email is required on an ACME issuer with configured domains.";
+        }
+        {
+          assertion = !missingDnsCredentials;
+          message = "infra.acme.dnsCredentials or a per-domain credentialsFile is required when using a DNS provider.";
+        }
+        {
+          assertion = cfg.certSyncerPublicKey != null;
+          message = "infra.acme.certSyncerPublicKey is required on an ACME issuer with configured domains.";
+        }
+      ];
+
       deployment.keys = ops.mkSecretKeys "acme" cfg [ "dnsCredentials" ];
 
       users.users.cert-syncer = {
@@ -180,6 +202,13 @@ in
       );
     })
     (lib.mkIf (!issuer && cfg.domains != [ ] && issuers != [ ]) {
+      assertions = [
+        {
+          assertion = cfg.certSyncerPrivateKey != null;
+          message = "infra.acme.certSyncerPrivateKey is required to synchronize certificates from an ACME issuer.";
+        }
+      ];
+
       deployment.keys."syncer.key" = lib.mkIf (cfg.certSyncerPrivateKey != null) {
         text = cfg.certSyncerPrivateKey;
         destDir = "/var/lib/secrets";

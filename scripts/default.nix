@@ -10,6 +10,7 @@ in
   infect = pkgs.writeShellApplication {
     name = "infect-server";
     runtimeInputs = [
+      pkgs.coreutils
       pkgs.curl
       pkgs.openssh
     ];
@@ -32,7 +33,6 @@ in
       pkgs.jq
       pkgs.openssh
       pkgs.nix
-      pkgs.gawk
     ];
     text = builtins.readFile ./export-ssh-key.sh;
   };
@@ -41,7 +41,6 @@ in
     name = "generate-key";
     runtimeInputs = [
       pkgs.openssh
-      pkgs.openssl
     ];
     text = builtins.readFile ./generate-key.sh;
   };
@@ -109,7 +108,7 @@ in
       echo "  3. nix develop"
       echo "  4. Run './scripts/infect.sh -i <ssh-key> <user>@<ip>' for each VPS"
       echo "  5. just deploy             # full deployment"
-      echo "  6. just deploy --on vps1   # single node"
+      echo "  6. just deploy vps1        # single node"
     '';
   };
 }

@@ -14,8 +14,3 @@ fi
 echo "🔑 Extraction de la clé publique..."
 ssh-keygen -y -f "$KEYS_DIR/syncer.key" > "$KEYS_DIR/syncer.key.pub"
 echo "✅ Clé publique extraite vers $KEYS_DIR/syncer.key.pub"
-
-openssl rand -hex 32 > $KEYS_DIR/kanidm-oauth2-grafana.key
-echo "🔑 Clé secrète pour Kanidm OAuth2 générée et stockée dans $KEYS_DIR/kanidm-oauth2-grafana.key"
-openssl rand -hex 32 > $KEYS_DIR/kanidm-oauth2-jellyfin.key.pub
-echo "🔑 Clé secrète pour Kanidm OAuth2 générée et stockée dans $KEYS_DIR/kanidm-oauth2-jellyfin.key"

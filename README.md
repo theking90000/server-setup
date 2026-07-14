@@ -110,7 +110,7 @@ cd ./my-infra
 nix develop
 
 # 4. Infecter chaque VPS
-infect-server -i ~/.ssh/id_ed25519 root@<ip>
+infect-server -i ~/.ssh/id_ed25519 --post-port <port-final> root@<ip>
 
 # 5. Tout déployer
 just deploy
@@ -148,10 +148,11 @@ Seul Nginx (tag `web-server`) expose des ports publiquement (80/443).
 
 ### Secrets
 
-Les secrets (passwords, tokens) ne transitent **jamais** par `/nix/store`.
-Ils sont déclarés comme options NixOS (`infra.<app>.password`, etc.) et
-déployés directement sur les nœuds via `ops.mkSecretKeys` → Colmena
-`deployment.keys` → upload SSH au moment du déploiement.
+`ops.mkSecretKeys` transmet les secrets aux nœuds via les clés de déploiement
+Colmena, sans les intégrer à la configuration NixOS construite. En revanche,
+un dépôt Flake privé contenant des secrets en clair est lui-même copié dans le
+store local pendant l'évaluation. Le dépôt privé doit donc rester strictement
+privé jusqu'à sa migration vers des fichiers chiffrés (par exemple sops-nix).
 
 Les services lisent les secrets depuis `/var/lib/secrets/<app>/` ou
 via systemd `LoadCredential`.
@@ -234,7 +235,7 @@ privé, et référencez-les dans vos modules via `pkgs.callPackage`.
 ## Vérification
 
 ```sh
-nix flake check --all-systems    # valide tous les modules
+nix flake check --all-systems    # vérifie les paquets et plusieurs configurations synthétiques
 ```
 
 ## Déploiement (depuis le dépôt privé)

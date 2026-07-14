@@ -614,9 +614,11 @@ use the per-node `enabled` guard.
 
 ## 8. Secrets
 
-Secrets (passwords, tokens, API keys) must never reach `/nix/store`. Instead,
-they are deployed directly onto the target node through Colmena's
-`deployment.keys` mechanism.
+Deployment keys keep secret values out of the built NixOS configuration, but
+the source of a private Flake is still copied to the local Nix store. Until the
+private repository uses encrypted source files, keep it private and restrict
+access to the build machine. At deployment time, secrets are uploaded through
+Colmena's `deployment.keys` mechanism.
 
 ### 8.1 Declaring secret options
 

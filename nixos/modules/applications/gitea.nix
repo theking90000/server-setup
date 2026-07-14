@@ -43,9 +43,11 @@ in
 
         settings = {
           server = {
-            ROOT_URL = "${config.infra.gitea.url}";
             HTTP_PORT = port;
             HTTP_ADDR = services.getVpnIp;
+          }
+          // lib.optionalAttrs (config.infra.gitea.url != null) {
+            ROOT_URL = config.infra.gitea.url;
           };
 
           metrics = {

@@ -74,6 +74,10 @@ in
         labels = {
           host = host;
         };
+        basic_auth = {
+          username = "user";
+          password = "password";
+        };
       }) (services.getHostsByTag tag);
     }
     (lib.mkIf (config.infra.reposilite.url != null && services.getVpnIpsByTag tag != [ ]) {

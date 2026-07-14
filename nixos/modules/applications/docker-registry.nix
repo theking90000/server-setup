@@ -39,6 +39,13 @@ in
   config = lib.mkMerge [
     { infra.registeredTags = [ tag ]; }
     (lib.mkIf enabled {
+      assertions = [
+        {
+          assertion = config.infra.dockerRegistry.accounts != null;
+          message = "infra.dockerRegistry.accounts is required on nodes tagged applications/docker-registry.";
+        }
+      ];
+
       deployment.keys = ops.mkSecretKeys "docker-registry" config.infra.dockerRegistry [ "accounts" ];
 
       systemd.services.docker-registry.serviceConfig = {

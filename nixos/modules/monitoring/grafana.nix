@@ -71,6 +71,17 @@ in
   config = lib.mkMerge [
     { infra.registeredTags = [ "grafana" ]; }
     (lib.mkIf enabled {
+      assertions = [
+        {
+          assertion = config.infra.grafana.password != null;
+          message = "infra.grafana.password is required on nodes tagged grafana.";
+        }
+        {
+          assertion = config.infra.grafana.grafana_secret != null;
+          message = "infra.grafana.grafana_secret is required on nodes tagged grafana.";
+        }
+      ];
+
       deployment.keys = ops.mkSecretKeys "grafana" config.infra.grafana [
         "password"
         "grafana_secret"
@@ -89,7 +100,8 @@ in
           server = {
             http_port = 3000;
             http_addr = services.getVpnIp;
-
+          }
+          // lib.optionalAttrs (config.infra.grafana.url != null) {
             root_url = config.infra.grafana.url;
           };
 
@@ -112,17 +124,17 @@ in
           }
         ];
 
-        provision.datasources.settings.datasources = map (ip: {
-          name = "Prometheus";
+        provision.datasources.settings.datasources = map (host: {
+          name = "Prometheus ${host}";
           type = "prometheus";
-          url = "http://${ip}:9090";
-        }) (services.getVpnIpsByTag "prometheus");
+          url = "http://${host}:9090";
+        }) (services.getHostsByTag "prometheus");
       };
 
       infra.backup.paths = [ "/var/lib/grafana/data" ];
 
     })
-    (lib.mkIf (config.infra.grafana.url != null) {
+    (lib.mkIf (enabled && config.infra.grafana.url != null) {
       infra.security.acls = [
         {
           port = 3000;
@@ -131,6 +143,8 @@ in
         }
       ];
 
+    })
+    (lib.mkIf (config.infra.grafana.url != null && services.getVpnIpsByTag "grafana" != [ ]) {
       infra.ingress."grafana" = {
         url = config.infra.grafana.url;
         backend = map (ip: "${ip}:3000") (services.getVpnIpsByTag "grafana");

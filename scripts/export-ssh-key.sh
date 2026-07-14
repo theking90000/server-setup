@@ -27,9 +27,7 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
 
     echo -n "🔍 Analyse de la configuration pour '$HOSTNAME' : "
 
-    # Récupération du chemin de la clé privée via la config SSH résolue
-    # On prend la première occurrence de 'identityfile' renvoyée par ssh -G
-    RAW_KEY_PATH=$(ssh -G "$HOSTNAME" | awk '/^identityfile/ {print $2; exit}')
+    RAW_KEY_PATH=$(echo "$JSON_DATA" | jq -r ".nodes[\"$HOSTNAME\"].sshKey // \"~/.ssh/id_ed25519\"")
 
     # Expansion du tilde (~) si présent, car bash ne l'expand pas dans une variable string
     KEY_PATH="${RAW_KEY_PATH/#\~/$HOME}"
@@ -50,4 +48,4 @@ for HOSTNAME in $(echo "$JSON_DATA" | jq -r '.nodes | keys[]'); do
 
 done
 
-echo "🚀 Workflow 'export-ssh-key' terminé. Synergie atteinte."
+echo "✅ Export des clés SSH terminé."

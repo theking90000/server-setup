@@ -29,8 +29,8 @@ Cela donne accès aux outils : `colmena`, `just`, et tous les scripts
       publicInterface = "ens3";         # Interface publique (défaut: ens3)
       useDHCP = true;                   # DHCP sur l'interface publique (défaut: true)
 
-      user = "root";
       sshKey = "~/.ssh/id_ed25519";      # Chemin local de votre clé SSH
+      sshPort = 22;                       # Port SSH final après infection
 
       tags = [                           # Services à activer sur ce nœud
         "web-server"
@@ -77,7 +77,7 @@ nix flake update infra
 Pour chaque VPS Debian 11 :
 
 ```sh
-infect-server -i ~/.ssh/id_ed25519 root@<ip-publique>
+infect-server -i ~/.ssh/id_ed25519 --post-port <port-final> root@<ip-publique>
 ```
 
 Le serveur redémarre sous NixOS. Le compte `root` est accessible en SSH
@@ -99,7 +99,7 @@ Cette commande exécute automatiquement :
 ### 6. Déploiement ciblé (optionnel)
 
 ```sh
-just deploy --on vps1     # un seul nœud
+just deploy vps1          # un seul nœud
 ```
 
 ## Structure
@@ -107,7 +107,7 @@ just deploy --on vps1     # un seul nœud
 ```
 ├── flake.nix            ← flake principal (input infra + colmena)
 ├── justfile             ← commandes just (deploy, generate-mesh, etc.)
-├── .gitignore           ← ignore inventory/keys/, wireguard/, hardware/
+├── .gitignore           ← ignore inventory/keys/ et wireguard/
 ├── config/              ← valeurs des options infra.*
 │   ├── default.nix      ← imports de tous les fichiers de config
 │   ├── acme/acme.nix
@@ -115,7 +115,7 @@ just deploy --on vps1     # un seul nœud
 │   └── ...
 ├── inventory/
 │   ├── nodes.nix        ← topologie (IPs, tags, clé SSH)
-│   ├── hardware/        ← généré par adopt-hardware
+│   ├── hardware/        ← placeholder suivi, remplacé par adopt-hardware
 │   ├── wireguard/       ← généré par generate-mesh
 │   └── keys/            ← généré par export-ssh-key
 └── README.md            ← ce fichier

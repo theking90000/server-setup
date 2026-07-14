@@ -1,7 +1,7 @@
 # -------------------------------------------------------------------------
 # ssh.nix — Configuration du serveur OpenSSH
 #
-# Active le daemon SSH sur le port 22, interdit l'authentification par
+# Active le daemon SSH sur le port final déclaré dans l'inventaire,
 # mot de passe pour root, et déploie la clé publique SSH du noeud
 # dans les authorized_keys de root.
 #
@@ -19,14 +19,13 @@ in
     enable = true;
 
     openFirewall = true;
+    ports = [ me.sshPort ];
 
     settings = {
       PermitRootLogin = "prohibit-password";
       PasswordAuthentication = false;
     };
   };
-
-  networking.firewall.allowedTCPPorts = [ 22 ];
 
   users.users.root.openssh.authorizedKeys.keys = lib.mkIf (me.sshPublicKey or null != null) [
     me.sshPublicKey
