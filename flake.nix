@@ -284,6 +284,7 @@
             giteaSsoNode.config.services.kanidm.provision.systems.oauth2.gitea.allowInsecureClientDisablePkce;
           assert builtins.elem "oidc_client_secret:/run/secrets/sso/gitea-client-secret"
             giteaSsoNode.config.systemd.services.gitea.serviceConfig.LoadCredential;
+          assert builtins.elem "kanidm.service" giteaSsoNode.config.systemd.services.gitea.after;
           assert lib.hasInfix "admin auth add-oauth" giteaSsoNode.config.systemd.services.gitea.preStart;
           assert lib.hasInfix "admin auth update-oauth" giteaSsoNode.config.systemd.services.gitea.preStart;
           mkEvalCheck "gitea-sso" giteaSsoNode;

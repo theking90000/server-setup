@@ -98,6 +98,7 @@ in
     # the NixOS module migrations and before the web process loads it.
     (lib.mkIf (enabled && ssoEnabled) {
       systemd.services.gitea = {
+        after = lib.optional (services.hasTag "kanidm") "kanidm.service";
         serviceConfig.LoadCredential = [ "oidc_client_secret:${ssoSecretFile}" ];
         preStart = lib.mkAfter ''
           oidc_source_ids="$(${giteaExe} admin auth list --vertical-bars --padding 0 --pad-char ' ' | ${pkgs.gawk}/bin/awk -F '|' '$2 == "kanidm" { print $1 }')"
