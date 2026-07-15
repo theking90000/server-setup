@@ -37,7 +37,10 @@ let
   useSopsDnsCredentials =
     isIssuer && hasDomains && cfg.dnsCredentials == null && cfg.dnsCredentialsFile == null;
   useSopsSyncerPrivateKey =
-    !isIssuer && hasDomains && cfg.certSyncerPrivateKey == null && cfg.certSyncerPrivateKeyFile == null;
+    !isIssuer
+    && issuerHosts != [ ]
+    && cfg.certSyncerPrivateKey == null
+    && cfg.certSyncerPrivateKeyFile == null;
 
   getVal = local: global: if local != null then local else global;
   certName = domain: lib.replaceStrings [ "*" ] [ "_" ] domain;
