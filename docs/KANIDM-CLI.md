@@ -1,6 +1,6 @@
 # Administrer Kanidm en CLI
 
-Ce guide couvre Kanidm 1.10 et l'intégration de ce dépôt. `kanidm` sert aux
+Ce guide couvre Kanidm 1.10.2 et l'intégration de ce dépôt. `kanidm` sert aux
 opérations courantes via l'API HTTPS. `kanidmd` agit directement sur la base du
 serveur et reste réservé à la récupération et à la maintenance hors ligne.
 
@@ -103,7 +103,7 @@ kanidm person credential status alice -D idm_admin
 kanidm person credential update alice -D idm_admin
 ```
 
-## Lister les groupes et les permissions disponibles
+## Gérer les groupes et les permissions
 
 Commencez toujours par interroger le serveur :
 
@@ -112,6 +112,41 @@ kanidm group list -D idm_admin
 kanidm group search grafana -D idm_admin
 kanidm group get grafana_admins -D idm_admin
 kanidm group list-members grafana_admins -D idm_admin
+```
+
+Créer un groupe et ajouter plusieurs personnes :
+
+```sh
+kanidm group create mon_groupe -D idm_admin
+kanidm group add-members mon_groupe alice bob -D idm_admin
+kanidm group list-members mon_groupe -D idm_admin
+```
+
+Retirer seulement certains membres :
+
+```sh
+kanidm group remove-members mon_groupe bob -D idm_admin
+```
+
+`set-members` remplace la liste complète. Il retire donc tous les membres non
+mentionnés ; ne l'utilisez que lorsque ce comportement est voulu :
+
+```sh
+kanidm group set-members mon_groupe alice charlie -D idm_admin
+```
+
+Un groupe peut aussi être membre d'un autre groupe. Cette commande donne aux
+membres de `equipe_dev` les accès accordés à `gitea_users` :
+
+```sh
+kanidm group add-members gitea_users equipe_dev -D idm_admin
+```
+
+Vérifiez les deux côtés de l'appartenance :
+
+```sh
+kanidm group list-members gitea_users -D idm_admin
+kanidm person get alice -D idm_admin
 ```
 
 Pour un traitement automatisé :
@@ -149,6 +184,29 @@ obtenir une session privilégiée à jour. Le rôle `idm_oauth2_admins` n'est pa
 nécessaire pour les clients produits par `infra.sso`, puisque Nix les gère.
 
 ## Donner accès aux applications
+
+### Gitea
+
+L'intégration Gitea crée un seul groupe d'accès, sans rôle ni permission Gitea
+associé :
+
+```sh
+kanidm group add-members gitea_users alice -D idm_admin
+kanidm group list-members gitea_users -D idm_admin
+```
+
+Retirer une personne de ce groupe empêche les nouvelles autorisations OIDC vers
+Gitea, sans supprimer son compte Gitea local :
+
+```sh
+kanidm group remove-members gitea_users alice -D idm_admin
+```
+
+Lors de sa première connexion, un compte Gitea local existant doit confirmer
+son mot de passe local pour établir la liaison. Les statuts administrateur et
+restreint restent gérés dans Gitea.
+
+### Grafana
 
 L'intégration Grafana crée automatiquement :
 
@@ -240,6 +298,58 @@ Cette commande est la seule modification manuelle prévue sur le client Grafana.
 Ne lancez pas `reset-basic-secret`, `delete`, `set-name` ou une modification de
 scope : Nix reste propriétaire de sa définition.
 
+## Choisir le claim OIDC `preferred_username`
+
+Kanidm ne possède pas de second alias libre par personne pour
+`preferred_username`. Pour chaque client OAuth2, il choisit entre deux attributs
+existants :
+
+| Mode | Claim envoyé pour `alice` | Commande |
+|---|---|---|
+| Nom court (`name`) | `alice` | `prefer-short-username` |
+| SPN (`spn`) | `alice@auth.example.com` | `prefer-spn-username` |
+
+Pour tester le SPN avec Gitea :
+
+```sh
+kanidm system oauth2 prefer-spn-username gitea -D idm_admin
+kanidm system oauth2 get gitea -D idm_admin
+```
+
+Pour revenir au nom court :
+
+```sh
+kanidm system oauth2 prefer-short-username gitea -D idm_admin
+```
+
+Dans ce dépôt, le client Gitea est déclaratif et utilise actuellement le nom
+court. Une modification CLI sera donc rétablie au prochain déploiement. Pour
+utiliser durablement le SPN, ajoutez le réglage suivant à `infra.sso.gitea` dans
+[`nixos/modules/applications/gitea.nix`](../nixos/modules/applications/gitea.nix),
+puis commitez, mettez à jour l'input privé et redéployez :
+
+```nix
+infra.sso.gitea = {
+  # ...
+  preferShortUsername = false;
+};
+```
+
+Ce réglage s'applique à tous les utilisateurs du client `gitea`. Il ne permet
+pas d'attribuer un alias OIDC différent à chaque personne. Renommer une personne
+avec la commande suivante change son véritable `name` Kanidm, donc aussi son
+identifiant de connexion ; ce n'est pas un alias :
+
+```sh
+kanidm person update alice --newname alice2 -D idm_admin
+```
+
+Enfin, changer `preferred_username` ne renomme pas un compte Gitea déjà lié :
+Gitea retrouve ensuite l'identité par son identifiant OIDC stable. Pour une
+première connexion non liée, le SPN contient `@` et peut être normalisé par
+Gitea pour former un username local ; le nom court reste donc le choix le plus
+prévisible ici.
+
 ## Récupération avec `kanidmd`
 
 `kanidmd` ouvre directement la base. Exécutez-le uniquement sur le nœud Kanidm,
@@ -293,6 +403,9 @@ rouvrir les accès applicatifs.
 
 ## Sources officielles
 
+- [Configuration et sessions du client CLI](https://kanidm.github.io/kanidm/stable/client_tools.html)
+- [Gestion et imbrication des groupes](https://kanidm.github.io/kanidm/stable/accounts/groups.html)
+- [OAuth2 et choix du nom court ou du SPN](https://kanidm.github.io/kanidm/master/integrations/oauth2.html#short-names)
 - [Comptes et groupes](https://kanidm.github.io/kanidm/master/accounts/intro.html)
 - [Personnes](https://kanidm.github.io/kanidm/master/accounts/people_accounts.html)
 - [Credentials et reset](https://kanidm.github.io/kanidm/master/accounts/authentication_and_credentials.html)
