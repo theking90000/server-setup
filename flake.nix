@@ -169,6 +169,22 @@
               infra.kanidm.url = "https://auth.example.test";
             }
           ];
+      giteaSsoNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [
+                "applications/gitea"
+                "kanidm"
+              ];
+            };
+          }
+          [
+            {
+              infra.gitea.url = "https://git.example.test";
+              infra.kanidm.url = "https://auth.example.test";
+            }
+          ];
       rcloneMount = lib.findFirst (
         mount: mount.where == "/mnt/test"
       ) null fileSecretsNode.config.systemd.mounts;
@@ -254,6 +270,23 @@
           assert builtins.elem "oidc_client_secret:/run/secrets/sso/grafana-client-secret"
             grafanaSsoNode.config.systemd.services.grafana.serviceConfig.LoadCredential;
           mkEvalCheck "grafana-sso" grafanaSsoNode;
+        gitea-sso =
+          assert builtins.attrNames giteaSsoNode.config.infra.sso.gitea.groups == [ "users" ];
+          assert !giteaSsoNode.config.infra.sso.gitea.pkce;
+          assert giteaSsoNode.config.infra.sso.gitea.redirectUris == [
+            "https://git.example.test/user/oauth2/kanidm/callback"
+          ];
+          assert
+            giteaSsoNode.config.services.gitea.settings.oauth2_client.ACCOUNT_LINKING == "login";
+          assert
+            giteaSsoNode.config.services.gitea.settings.oauth2_client.USERNAME == "preferred_username";
+          assert
+            giteaSsoNode.config.services.kanidm.provision.systems.oauth2.gitea.allowInsecureClientDisablePkce;
+          assert builtins.elem "oidc_client_secret:/run/secrets/sso/gitea-client-secret"
+            giteaSsoNode.config.systemd.services.gitea.serviceConfig.LoadCredential;
+          assert lib.hasInfix "admin auth add-oauth" giteaSsoNode.config.systemd.services.gitea.preStart;
+          assert lib.hasInfix "admin auth update-oauth" giteaSsoNode.config.systemd.services.gitea.preStart;
+          mkEvalCheck "gitea-sso" giteaSsoNode;
         rclone-config =
           assert rcloneMount != null;
           assert lib.hasInfix "config=/var/lib/rclone-sync/test/rclone.conf" rcloneMount.options;

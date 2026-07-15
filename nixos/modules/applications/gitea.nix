@@ -9,6 +9,7 @@
 # -------------------------------------------------------------------------
 {
   config,
+  pkgs,
   services,
   lib,
   ...
@@ -20,6 +21,11 @@ let
   enabled = services.hasTag tag;
   port = 3003;
   dataDir = "/var/lib/gitea";
+  kanidmAvailable = services.getHostsByTag "kanidm" != [ ];
+  giteaAvailable = services.getHostsByTag tag != [ ];
+  ssoEnabled = kanidmAvailable && giteaAvailable && cfg.url != null;
+  ssoSecretFile = "/run/secrets/sso/gitea-client-secret";
+  giteaExe = lib.getExe config.services.gitea.package;
 in
 {
   # Public API
@@ -66,6 +72,13 @@ in
         };
       };
 
+      services.gitea.settings.oauth2_client = lib.mkIf ssoEnabled {
+        ENABLE_AUTO_REGISTRATION = true;
+        USERNAME = "preferred_username";
+        OPENID_CONNECT_SCOPES = "openid profile email";
+        ACCOUNT_LINKING = "login";
+      };
+
       infra.backup.paths = [ dataDir ];
 
       infra.security.acls = [
@@ -79,6 +92,37 @@ in
         }
       ];
 
+    })
+
+    # Gitea stores OAuth sources in its database, so reconcile the source after
+    # the NixOS module migrations and before the web process loads it.
+    (lib.mkIf (enabled && ssoEnabled) {
+      systemd.services.gitea = {
+        serviceConfig.LoadCredential = [ "oidc_client_secret:${ssoSecretFile}" ];
+        preStart = lib.mkAfter ''
+          oidc_source_ids="$(${giteaExe} admin auth list --vertical-bars --padding 0 --pad-char ' ' | ${pkgs.gawk}/bin/awk -F '|' '$2 == "kanidm" { print $1 }')"
+
+          if [[ "$oidc_source_ids" == *$'\n'* ]]; then
+            echo "Multiple Gitea authentication sources named kanidm" >&2
+            exit 1
+          fi
+
+          oidc_secret="$(< "$CREDENTIALS_DIRECTORY/oidc_client_secret")"
+          oidc_args=(
+            --name kanidm
+            --provider openidConnect
+            --key gitea
+            --secret "$oidc_secret"
+            --auto-discover-url "${config.infra.kanidm.url}/oauth2/openid/gitea/.well-known/openid-configuration"
+          )
+
+          if [ -z "$oidc_source_ids" ]; then
+            ${giteaExe} admin auth add-oauth "''${oidc_args[@]}"
+          else
+            ${giteaExe} admin auth update-oauth --id "$oidc_source_ids" "''${oidc_args[@]}"
+          fi
+        '';
+      };
     })
 
     # Fleet-wide contributions
@@ -97,6 +141,17 @@ in
     })
     (lib.mkIf (services.getHostsByTag tag != [ ]) {
       infra.grafana.dashboards = [ ./dashboards/gitea.json ];
+    })
+    (lib.mkIf ssoEnabled {
+      infra.sso.gitea = {
+        displayName = "Gitea";
+        serviceTag = tag;
+        redirectUris = [ "${cfg.url}/user/oauth2/kanidm/callback" ];
+        landingUrl = cfg.url;
+        secretFile = ssoSecretFile;
+        pkce = false;
+        groups.users = { };
+      };
     })
   ];
 }
