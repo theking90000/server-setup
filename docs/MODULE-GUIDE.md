@@ -99,6 +99,18 @@ autre nœud.
 Erreur classique : entourer un dashboard avec `services.hasTag tag`. Grafana ne
 le verra alors que si Grafana et l'application sont sur le même nœud.
 
+Placez toujours le test de présence globale avant la lecture d'une valeur
+privée :
+
+```nix
+services.getVpnIpsByTag tag != [ ] && cfg.url != null
+```
+
+L'ordre est intentionnel. Grâce à l'évaluation paresseuse de Nix, les valeurs
+d'un service absent ne sont pas forcées. Son fichier privé peut donc rester
+importé avec ses placeholders. Une erreur de syntaxe reste nécessairement
+bloquante puisque Nix doit parser le fichier.
+
 ## 3. Squelette recommandé
 
 Ce squelette montre toutes les responsabilités possibles. Supprimez simplement
@@ -195,7 +207,7 @@ in
       }) (services.getHostsByTag tag);
     }
 
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
+    (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress.myapp = {
         url = cfg.url;
         backend = map (ip: "${ip}:${toString port}")
@@ -468,6 +480,8 @@ d'un credential fournisseur, ni la santé d'un service après activation.
 - [ ] Le tag est nommé et enregistré, ou l'activation sans tag est justifiée.
 - [ ] Le bloc local utilise `services.hasTag` ou les cibles du nœud courant.
 - [ ] Les contributions inter-nœuds utilisent une garde globale.
+- [ ] La présence globale est testée avant toute valeur du service afin de ne
+      pas évaluer la configuration d'un service absent.
 - [ ] Les erreurs de configuration importantes ont une assertion lisible.
 
 ### Réseau

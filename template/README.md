@@ -9,7 +9,9 @@ Le guide complet est disponible dans le dépôt public :
 
 ## Premier déploiement
 
-1. Remplacez tous les `CHANGEME` de `inventory/nodes.nix` et `config/`.
+1. Remplacez tous les `CHANGEME` de `inventory/nodes.nix`, puis uniquement ceux
+   des services dont un tag est activé dans la flotte. Les fichiers `config/`
+   des services absents peuvent rester importés et inchangés.
 2. Chargez les outils :
 
    ```sh
@@ -69,6 +71,8 @@ Règles :
 - ne créez pas de copie claire d'un JSON : utilisez `sops <fichier>` ;
 - le câblage SOPS standard appartient déjà au module public du service ;
 - un module privé reste responsable de ses propres secrets et unités systemd ;
+- une configuration de service inactive n'est pas évaluée, mais son fichier
+  doit rester du Nix syntaxiquement valide ;
 - les clés privées sous `inventory/keys/` et `inventory/wireguard/` sont
   ignorées par Git et doivent être sauvegardées séparément.
 
@@ -78,7 +82,7 @@ Règles :
 |---|---|
 | `init-project` | Préparer ou compléter le dépôt sans écraser l'existant |
 | `update-sops-keys` | Recalculer les destinataires après un changement de nœud |
-| `check-project` | Vérifier placeholders, séparation config/secrets, Nix et Colmena |
+| `check-project` | Vérifier secrets actifs, séparation config/secrets, Nix et Colmena |
 | `deploy-project <hôte>` | Initialiser, vérifier et déployer un canari |
 | `deploy-project` | Initialiser, vérifier et déployer toute la flotte |
 | `infect-server` | Installer NixOS sur un serveur Debian neuf |

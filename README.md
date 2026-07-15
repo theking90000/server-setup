@@ -17,7 +17,7 @@ services externes utilisés. L'infection remplace le système du serveur.
 nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
 cd ./my-infra
 
-# Renseigner inventory/nodes.nix et config/, puis charger les outils
+# Renseigner inventory/nodes.nix et la config des services activés
 nix develop
 
 # Répéter pour chaque serveur Debian
@@ -64,6 +64,10 @@ La distinction importante est la portée :
 - `services.hasTag tag` protège une configuration locale ;
 - `services.getHostsByTag tag` et `getVpnIpsByTag tag` découvrent toute la
   flotte pour les contributions inter-nœuds.
+
+Un fichier sous `config/` peut rester importé sans être configuré tant qu'aucun
+nœud ne porte le tag du service. Ses placeholders et valeurs ne sont alors pas
+évalués. Le fichier doit néanmoins rester du Nix syntaxiquement valide.
 
 ## Deux dépôts, une seule responsabilité par service
 
@@ -129,7 +133,7 @@ chemin SOPS par défaut.
 | `infect-server` | Remplacer Debian par NixOS |
 | `init-project` | Préparer hardware, clés, SOPS et secrets absents |
 | `update-sops-keys` | Recalculer les destinataires et re-chiffrer en staging |
-| `check-project` | Refuser les placeholders puis évaluer Nix et Colmena |
+| `check-project` | Refuser les placeholders chiffrés puis évaluer Nix et Colmena |
 | `deploy-project [hôte]` | Initialiser, vérifier et déployer |
 | `adopt-hardware` | Récupérer les configurations matérielles |
 | `generate-mesh` | Générer les clés WireGuard absentes |

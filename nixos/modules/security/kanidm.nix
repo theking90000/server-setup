@@ -380,7 +380,7 @@ in
     })
 
     # ── Ingress (global, guarded by URL + backends) ──
-    (lib.mkIf (cfg.url != null && kanidmIps != [ ]) {
+    (lib.mkIf (kanidmIps != [ ] && cfg.url != null) {
       infra.ingress."kanidm" = {
         url = cfg.url;
         backend = map (ip: "${ip}:${toString cfg.port}") kanidmIps;

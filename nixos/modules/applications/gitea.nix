@@ -143,7 +143,7 @@ in
         labels = { inherit host; };
       }) (services.getHostsByTag tag);
     }
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
+    (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress."gitea" = {
         url = cfg.url;
         backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);

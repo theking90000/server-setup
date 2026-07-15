@@ -142,7 +142,7 @@ in
       }) (services.getHostsByTag tag);
     }
 
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
+    (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress."docker-registry" = {
         url = cfg.url;
         backend = map (ip: "${ip}:${toString servicePort}") (services.getVpnIpsByTag tag);

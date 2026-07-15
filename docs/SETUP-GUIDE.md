@@ -123,8 +123,9 @@ Rclone ne possède pas de tag : chaque montage nomme directement ses
 
 ## 5. Choisir les services et préparer le DNS
 
-Éditez les fichiers sous `config/`. Ils ne doivent contenir que des valeurs non
-secrètes : URL, port ou fonctionnalité.
+Éditez uniquement les fichiers des services dont un tag est activé dans la
+flotte. `config/` ne doit contenir que des valeurs non secrètes : URL, port ou
+fonctionnalité.
 
 ```nix
 {
@@ -135,8 +136,10 @@ secrètes : URL, port ou fonctionnalité.
 }
 ```
 
-Supprimez ou remplacez tous les `CHANGEME`. Un fichier de configuration peut
-rester importé même si son tag n'est utilisé sur aucun nœud.
+Remplacez les `CHANGEME` des services activés. Un fichier de configuration peut
+rester importé et inchangé si son tag n'est utilisé sur aucun nœud : ses valeurs
+ne sont alors pas évaluées. Une erreur de syntaxe Nix reste toujours bloquante,
+car tout fichier importé doit pouvoir être parsé.
 
 Pour chaque URL publique, créez dans votre zone DNS :
 
@@ -348,7 +351,7 @@ hors mesure. Une personne qui dispose déjà de ces éléments suit seulement :
 ```sh
 nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
 cd ./my-infra
-# éditer inventory/nodes.nix et config/
+# éditer inventory/nodes.nix et la config des services activés
 nix develop
 # infect-server ... pour chaque machine
 init-project

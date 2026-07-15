@@ -90,6 +90,49 @@
               infra.grafana.grafanaSecret = "test";
             }
           ];
+      inactiveServiceValue = throw "configuration of an inactive service was evaluated";
+      inactiveServicesNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [ "web-server" ];
+            };
+          }
+          [
+            {
+              infra.acme.email = inactiveServiceValue;
+              infra.dockerRegistry = {
+                url = inactiveServiceValue;
+                accounts = inactiveServiceValue;
+              };
+              infra.filesave.url = inactiveServiceValue;
+              infra.gitea = {
+                url = inactiveServiceValue;
+                registrationEnabled = inactiveServiceValue;
+              };
+              infra.grafana = {
+                url = inactiveServiceValue;
+                user = inactiveServiceValue;
+              };
+              infra.jellyfin.url = inactiveServiceValue;
+              infra.kanidm.url = inactiveServiceValue;
+              infra.ntfy = {
+                url = inactiveServiceValue;
+                upstream-base-url = inactiveServiceValue;
+              };
+              infra.reposilite.url = inactiveServiceValue;
+              infra.restic = {
+                repository = inactiveServiceValue;
+                password = inactiveServiceValue;
+                env = inactiveServiceValue;
+              };
+              infra.sncb-insights = {
+                package = inactiveServiceValue;
+                url = inactiveServiceValue;
+              };
+              infra.www.url = inactiveServiceValue;
+            }
+          ];
       stableServicesNode =
         mkNode
           {
@@ -336,6 +379,7 @@
           assert minimalNode.config.sops.secrets == { };
           mkEvalCheck "minimal-module" minimalNode;
         optional-urls = mkEvalCheck "optional-urls" optionalUrlsNode;
+        inactive-service-config = mkEvalCheck "inactive-service-config" inactiveServicesNode;
         stable-services = mkEvalCheck "stable-services" stableServicesNode;
         file-secrets =
           assert fileSecretsNode.config.sops.secrets == { };
