@@ -101,7 +101,7 @@ in
         after = lib.optional (services.hasTag "kanidm") "kanidm.service";
         serviceConfig.LoadCredential = [ "oidc_client_secret:${ssoSecretFile}" ];
         preStart = lib.mkAfter ''
-          oidc_source_ids="$(${giteaExe} admin auth list --vertical-bars --padding 0 --pad-char ' ' | ${pkgs.gawk}/bin/awk -F '|' '$2 == "kanidm" { print $1 }')"
+          oidc_source_ids="$(${giteaExe} admin auth list --vertical-bars --padding 0 --pad-char ' ' | ${pkgs.gawk}/bin/awk -F '|' '$2 == "kanidm" { gsub(/^[[:space:]]+|[[:space:]]+$/, "", $1); print $1 }')"
 
           if [[ "$oidc_source_ids" == *$'\n'* ]]; then
             echo "Multiple Gitea authentication sources named kanidm" >&2
