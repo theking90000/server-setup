@@ -7,7 +7,6 @@
 
 let
   cfg = config.infra.sops;
-  hasDomains = config.infra.acme.domains != [ ];
   isIssuer = services.hasTag "acme-issuer";
   secret = file: key: {
     sopsFile = cfg.secretsDirectory + "/${file}.json";
@@ -15,7 +14,7 @@ let
   };
 in
 {
-  config = lib.mkIf hasDomains {
+  config = {
     sops.secrets = {
       "acme/syncer-private-key" = lib.mkIf (!isIssuer) (
         secret "acme-syncer" "privateKey" // { mode = "0400"; }
