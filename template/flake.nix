@@ -7,11 +7,6 @@
     infra.url = "github:theking90000/server-setup";
     colmena.url = "github:zhaofengli/colmena";
 
-    sops-nix = {
-      url = "github:Mic92/sops-nix";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
-
     nixos-raspberrypi = {
       url = "github:nvmd/nixos-raspberrypi/main";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -24,7 +19,6 @@
       nixpkgs-darwin,
       infra,
       colmena,
-      sops-nix,
       nixos-raspberrypi,
       ...
     }:
@@ -45,9 +39,8 @@
         imports = [
           ./inventory/hardware/${name}/hardware.nix
           ./config
-          ./secrets
           infra.nixosModules.default
-          sops-nix.nixosModules.sops
+          infra.nixosModules.sops
         ]
         ++ lib.optionals (builtins.elem "raspberry-pi" node.tags) [
           nixos-raspberrypi.nixosModules.raspberry-pi-5.base
@@ -55,6 +48,11 @@
         ];
 
         infra.nodeName = name;
+
+        infra.sops = {
+          secretsDirectory = ./secrets;
+          certSyncerPublicKeyFile = ./inventory/keys/syncer.key.pub;
+        };
 
         infra.nodes = lib.mkMerge [
           nodesData.nodes
@@ -129,7 +127,6 @@
           pkgs.mkShell {
             buildInputs = [
               pkgs.colmena
-              pkgs.just
               pkgs.jq
               pkgs.wireguard-tools
               pkgs.openssh
@@ -142,17 +139,20 @@
               infra.packages.${system}.export-ssh-key
               infra.packages.${system}.generate-key
               infra.packages.${system}.generate-mesh
+              infra.packages.${system}.update-sops-keys
+              infra.packages.${system}.init-project
+              infra.packages.${system}.check-project
+              infra.packages.${system}.deploy-project
               infra.packages.${system}.bootstrap-project
             ];
 
             shellHook = ''
               ${if isMac then "export TMPDIR=/private/tmp" else ""}
-              export SOPS_AGE_KEY_CMD="ssh-to-age -private-key -i $HOME/.ssh/id_ed25519"
               echo "================================================="
               echo " Bienvenue dans l'environnement de déploiement!"
               echo "================================================="
               echo "Système détecté : ${system}"
-              echo "Tape 'just' pour voir les commandes disponibles."
+              echo "Run 'init-project', 'check-project' or 'deploy-project'."
             '';
           };
       });

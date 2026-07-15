@@ -73,13 +73,15 @@ direct file path in `/var/lib/secrets/<app>/`.
 In private repositories, `config/` is a strict functional boundary: it may
 only set readable `infra.<app>` choices such as URLs, ports or feature flags.
 SOPS declarations, runtime secret paths, owners, tag guards and systemd details
-belong in the central `secrets/` adapter and are forbidden in `config/`.
+belong in the optional public SOPS adapter, or in a project-specific private
+module, and are forbidden in `config/`.
 
 ### Bootstrap
 
 New private repos are created from `template/` via the `bootstrap-project`
-script (packaged in the flake). The template includes `flake.nix`, `justfile`,
+script (packaged in the flake). The template includes `flake.nix`,
 `inventory/nodes.nix`, and `config/*.nix` with `CHANGEME` placeholders.
+`init-project`, `check-project`, and `deploy-project` replace the old justfile.
 
 ### Custom packages (`pkgs/`)
 
@@ -136,6 +138,10 @@ colmena apply --on <host>        # deploy single host
 | `generate-mesh`      | Generate WireGuard mesh keys                    |
 | `export-ssh-key`     | Download host SSH pubkeys                       |
 | `generate-key`       | Generate cert-syncer SSH key (ACME)             |
+| `update-sops-keys`   | Refresh SOPS recipients and encrypted files     |
+| `init-project`       | Prepare a private repo and missing SOPS files    |
+| `check-project`      | Validate secrets, flake and Colmena nodes        |
+| `deploy-project`     | Initialize, check and deploy the private repo    |
 
 ## Key files to know
 

@@ -5,6 +5,10 @@
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
     nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-25.11-darwin";
     colmena.url = "github:zhaofengli/colmena";
+    sops-nix = {
+      url = "github:Mic92/sops-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -13,6 +17,7 @@
       nixpkgs,
       nixpkgs-darwin,
       colmena,
+      sops-nix,
       ...
     }:
     let
@@ -194,12 +199,33 @@
           tags = [ ];
         };
       } [ ./template/config ];
+      sopsNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [ ];
+            };
+          }
+          [
+            self.nixosModules.sops
+            {
+              infra.sops.secretsDirectory = ./tests/sops;
+              sops.validateSopsFiles = false;
+            }
+          ];
       templateParsed = import ./template/flake.nix;
     in
     {
       nixosModules.default = {
         imports = [
           ./nixos/modules
+        ];
+      };
+
+      nixosModules.sops = {
+        imports = [
+          sops-nix.nixosModules.sops
+          ./nixos/modules/sops
         ];
       };
 
@@ -305,6 +331,12 @@
           assert builtins.isAttrs templateParsed;
           assert builtins.pathExists ./template/inventory/hardware/vps1/hardware.nix;
           mkEvalCheck "template" templateNode;
+        sops-module =
+          assert builtins.hasAttr "wireguard/private-key" sopsNode.config.sops.secrets;
+          assert
+            sopsNode.config.infra.wireguard.privateKeyFile
+            == sopsNode.config.sops.secrets."wireguard/private-key".path;
+          mkEvalCheck "sops-module" sopsNode;
         template-config-boundary =
           checkPkgs.runCommand "template-config-boundary"
             {
@@ -321,6 +353,21 @@
           bash ${./scripts/test-infect.sh}
           touch "$out"
         '';
+        sops-script = checkPkgs.runCommand "sops-script"
+          {
+            nativeBuildInputs = [
+              checkPkgs.bash
+              checkPkgs.coreutils
+              checkPkgs.gnugrep
+              checkPkgs.gnused
+              checkPkgs.jq
+              checkPkgs.ripgrep
+            ];
+          }
+          ''
+            bash ${./scripts/test-sops-project.sh}
+            touch "$out"
+          '';
         script-syntax = checkPkgs.runCommand "script-syntax" { nativeBuildInputs = [ checkPkgs.bash ]; } ''
           for script in ${./scripts}/*.sh; do
             bash -n "$script"

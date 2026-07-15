@@ -6,7 +6,7 @@ let
     name = "server-setup-template";
   };
 in
-{
+rec {
   infect = pkgs.writeShellApplication {
     name = "infect-server";
     runtimeInputs = [
@@ -56,6 +56,64 @@ in
     text = builtins.readFile ./generate-mesh.sh;
   };
 
+  update-sops-keys = pkgs.writeShellApplication {
+    name = "update-sops-keys";
+    runtimeInputs = [
+      pkgs.age
+      pkgs.coreutils
+      pkgs.findutils
+      pkgs.gnugrep
+      pkgs.jq
+      pkgs.nix
+      pkgs.openssh
+      pkgs.sops
+      pkgs.ssh-to-age
+    ];
+    text = builtins.readFile ./update-sops-keys.sh;
+  };
+
+  init-project = pkgs.writeShellApplication {
+    name = "init-project";
+    runtimeInputs = [
+      adopt-hardware
+      export-ssh-key
+      generate-key
+      generate-mesh
+      update-sops-keys
+      pkgs.findutils
+      pkgs.jq
+      pkgs.nix
+      pkgs.openssl
+      pkgs.ripgrep
+      pkgs.sops
+      pkgs.gnused
+    ];
+    text = builtins.readFile ./init-project.sh;
+  };
+
+  check-project = pkgs.writeShellApplication {
+    name = "check-project";
+    runtimeInputs = [
+      pkgs.colmena
+      pkgs.findutils
+      pkgs.jq
+      pkgs.nix
+      pkgs.ripgrep
+      pkgs.sops
+    ];
+    text = builtins.readFile ./check-project.sh;
+  };
+
+  deploy-project = pkgs.writeShellApplication {
+    name = "deploy-project";
+    runtimeInputs = [
+      check-project
+      init-project
+      pkgs.colmena
+    ];
+    text = builtins.readFile ./deploy-project.sh;
+  };
+
   bootstrap-project = pkgs.writeShellApplication {
     name = "bootstrap-project";
     runtimeInputs = [
@@ -77,10 +135,9 @@ in
         echo "    3. Edit config/*.nix — set only non-secret infra.* values"
         echo "    4. nix develop"
         echo "    5. Run 'infect-server' for each VPS"
-        echo "    6. just prepare"
-        echo "    7. Configure .sops.yaml and create encrypted secrets/*.json"
-        echo "    8. just check"
-        echo "    9. just deploy"
+        echo "    6. init-project"
+        echo "    7. Fill the encrypted fields reported by init-project"
+        echo "    8. deploy-project"
         exit 1
       fi
 
@@ -110,11 +167,10 @@ in
       echo "  2. Edit config/ files — set only non-secret infra.* values"
       echo "  3. nix develop"
       echo "  4. Run 'infect-server -i <ssh-key> <user>@<ip>' for each VPS"
-      echo "  5. just prepare"
-      echo "  6. Configure .sops.yaml and create encrypted secrets/*.json"
-      echo "  7. just check              # evaluate without deploying"
-      echo "  8. just deploy             # full deployment"
-      echo "  9. just deploy vps1        # single node"
+      echo "  5. init-project"
+      echo "  6. Fill the encrypted fields reported by init-project"
+      echo "  7. check-project           # evaluate without deploying"
+      echo "  8. deploy-project [host]   # deploy all nodes or one host"
     '';
   };
 }

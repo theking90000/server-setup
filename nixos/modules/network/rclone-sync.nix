@@ -38,7 +38,19 @@ let
   cfg = config.infra.rcloneSync;
   nodeName = config.infra.nodeName;
 
-  mountedHere = lib.filterAttrs (_: m: builtins.elem nodeName m.targetNodes) cfg.mounts;
+  effectiveMounts = lib.mapAttrs (
+    name: mount:
+    mount
+    // {
+      configFile =
+        if mount.configFile != null then
+          mount.configFile
+        else
+          cfg.runtimeConfigFiles.${name} or null;
+    }
+  ) cfg.mounts;
+
+  mountedHere = lib.filterAttrs (_: m: builtins.elem nodeName m.targetNodes) effectiveMounts;
   hasMounts = mountedHere != { };
 
   # Options rclone (key=value) → converties en RCLONE_KEY via args2env
@@ -140,6 +152,12 @@ let
 in
 {
   options.infra.rcloneSync = {
+    runtimeConfigFiles = mkOption {
+      type = types.attrsOf types.str;
+      default = { };
+      description = "Chemins runtime fournis par un adaptateur de secrets, indexés par nom de montage.";
+    };
+
     mounts = mkOption {
       type = types.attrsOf (
         types.submodule (

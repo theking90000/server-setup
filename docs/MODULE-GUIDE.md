@@ -667,18 +667,19 @@ For encrypted repositories, prefer the corresponding runtime path option when
 the module provides one (`passwordFile`, `accountsFile`, `envFile`, etc.):
 
 ```nix
-# secrets/default.nix in the private repository
+# Provided by the optional public infra.nixosModules.sops adapter
 infra.myapp.passwordFile = "/run/secrets/myapp/password";
 ```
 
 The plaintext value and its `*File` alternative are mutually exclusive. This
-keeps the public module independent from sops-nix, agenix, or any other secret
-provider.
+keeps the main public module independent from sops-nix, agenix, or any other
+secret provider.
 
 The private `config/<app>/<app>.nix` file must not contain this plumbing. It is
-reserved for readable functional choices such as `infra.myapp.url`; SOPS
-declarations, `*File` paths, owners and service details belong in the central
-`secrets/` adapter. The generated template checks this boundary automatically.
+reserved for readable functional choices such as `infra.myapp.url`. The
+optional public SOPS adapter owns standard declarations and `*File` paths; a
+private module owns only its project-specific secret wiring. The template
+checks this boundary automatically.
 
 Rclone follows the same compatibility rule with `configContent` (legacy) and
 `configFile` (runtime secret path). This only changes secret delivery; token

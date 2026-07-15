@@ -1,244 +1,98 @@
-# Mon Infrastructure Privée
+# Mon infrastructure privée
 
-Déploiement NixOS + Colmena pour mon infra.
+Déploiement NixOS avec Colmena, les modules publics `server-setup` et des
+secrets JSON chiffrés par SOPS.
 
 ## Démarrage
 
-```sh
-nix develop
-```
+1. Remplace tous les `CHANGEME` dans `inventory/nodes.nix` et `config/`.
+2. Entre dans l'environnement :
 
-Cela donne accès aux outils : `colmena`, `just`, et tous les scripts
-(`infect-server`, `generate-mesh`, `adopt-hardware`, etc.).
+   ```sh
+   nix develop
+   ```
 
-## Étapes de déploiement
+3. Infecte chaque serveur Debian :
 
-### 1. Configurer les nœuds
+   ```sh
+   infect-server -i ~/.ssh/id_ed25519 --post-port 22 root@203.0.113.10
+   ```
 
-Édite `inventory/nodes.nix` — remplace **tous** les `CHANGEME` :
+4. Prépare le projet :
 
-```nix
-{
-  nodes = {
-    vps1 = {
-      publicIp = "51.38.239.124";       # IP publique du VPS
-      vpnIp = "10.100.0.1";             # IP WireGuard (unique par nœud)
-      ipv6 = "2001:41d0:305:2100::a38c"; # IPv6 (dans le panel OVH)
-      ipv6Gateway = "2001:41d0:305:2100::1"; # Passerelle IPv6
+   ```sh
+   init-project
+   ```
 
-      publicInterface = "ens3";         # Interface publique (défaut: ens3)
-      useDHCP = true;                   # DHCP sur l'interface publique (défaut: true)
+   Cette commande récupère le hardware et les clés SSH hôtes, génère les clés
+   locales, crée `.sops.yaml` et chiffre les fichiers de secrets manquants. Elle
+   ne remplace jamais un secret existant.
 
-      sshKey = "~/.ssh/id_ed25519";      # Chemin local de votre clé SSH
-      sshPort = 22;                       # Port SSH final après infection
+5. Renseigne uniquement les champs signalés :
 
-      tags = [                           # Services à activer sur ce nœud
-        "web-server"
-        "acme-issuer"
-        "node-metrics"
-        "backup"
-      ];
-    };
+   ```sh
+   sops secrets/acme.json
+   sops secrets/restic.json
+   ```
 
-    # Ajoute d'autres nœuds ici si besoin
-  };
-}
-```
+6. Vérifie puis déploie :
 
-### 2. Configurer les applications
+   ```sh
+   check-project
+   deploy-project          # toute la flotte
+   deploy-project vps1     # un seul hôte
+   ```
 
-Édite les fichiers dans `config/` — remplace **tous** les `CHANGEME` :
+## Règles simples
 
-- `config/acme/acme.nix` → email Let's Encrypt et provider DNS
-- `config/grafana/grafana.nix` → URL et utilisateur administrateur
-- `config/gitea/gitea.nix` → URL
-- `config/jellyfin/jellyfin.nix` → URL
-- `config/docker-registry/docker-registry.nix` → URL
-- `config/ntfy/ntfy.nix` → URL, upstream
-- `config/reposilite/reposilite.nix` → URL
-- `config/filesave/filesave.nix` → URL
-- `config/kanidm/kanidm.nix` → URL et LDAPS optionnel
-- `config/rclone-sync/rclone-sync.nix` → montages rclone (S3, SFTP, …) par nœud
-- `config/www/www.nix` → URL, paquet Nix optionnel
+- `config/` contient uniquement les choix fonctionnels `infra.*` : URLs, ports,
+  tags et options de service.
+- `secrets/` contient uniquement les JSON chiffrés et leur courte documentation.
+- Le câblage standard SOPS est fourni par `infra.nixosModules.sops` depuis le
+  dépôt public ; il n'est pas recopié ici.
+- Les fichiers privés WireGuard et cert-syncer restent ignorés par Git.
+- Un module privé spécifique déclare lui-même ses éventuels secrets spécifiques.
 
-Supprimez les fichiers `config/<app>/<app>.nix` des applications que vous
-n'utilisez pas, et retirez-les de `config/default.nix`.
+## Commandes
 
-Règle stricte : `config/` décrit uniquement les choix fonctionnels `infra.*`.
-Les déclarations SOPS, chemins `/run/secrets`, propriétaires et détails systemd
-appartiennent exclusivement à `secrets/`.
-
-### 3. Mettre à jour la librairie publique
-
-```sh
-nix flake update infra
-```
-
-### 4. Infecter les VPS avec NixOS
-
-Pour chaque VPS Debian 11 :
-
-```sh
-infect-server -i ~/.ssh/id_ed25519 --post-port <port-final> root@<ip-publique>
-```
-
-Le serveur redémarre sous NixOS. Le compte `root` est accessible en SSH
-avec la clé utilisée pour l'infection.
-
-### 5. Adopter le matériel et préparer les fichiers locaux
-
-```sh
-just prepare
-```
-
-`just prepare` ne déploie rien. Il génère le mesh, adopte le matériel et
-exporte les clés nécessaires.
-
-### 6. Chiffrer les secrets
-
-Convertis la clé publique de l'administrateur et celles exportées pour les
-hôtes, puis remplace les destinataires dans `.sops.yaml` :
-
-```sh
-ssh-to-age < ~/.ssh/id_ed25519.pub
-ssh-to-age < inventory/keys/vps1/key.pub
-```
-
-Crée ensuite les fichiers nécessaires, par exemple :
-
-```sh
-sops secrets/acme.json
-sops secrets/restic.json
-sops secrets/grafana.json
-sops secrets/kanidm.json
-```
-
-Le schéma complet est documenté dans `secrets/README.md`. Les fichiers SOPS
-chiffrés sont suivis par Git ; les valeurs en clair ne doivent jamais l'être.
-
-### 7. Vérifier sans déployer
-
-```sh
-just check
-```
-
-`nix flake check` vérifie les sorties déclarées par le flake. La seconde
-commande de la recette force en plus l'évaluation complète des `drvPath` de
-tous les nœuds avec Colmena ; elle ne construit ni ne déploie les systèmes.
-
-### 8. Déployer
-
-```sh
-just deploy               # tous les nœuds
-just deploy vps1          # un seul nœud
-```
+| Commande | Rôle |
+|---|---|
+| `init-project` | Prépare les fichiers locaux et initialise SOPS |
+| `update-sops-keys` | Met à jour les destinataires après un changement de nœud |
+| `check-project` | Vérifie les placeholders, Nix et tous les nœuds Colmena |
+| `deploy-project [hôte]` | Initialise, vérifie et déploie |
+| `infect-server` | Remplace Debian par NixOS |
+| `generate-mesh` | Régénère les clés WireGuard absentes |
+| `adopt-hardware` | Récupère la configuration matérielle |
 
 ## Structure
 
-```
-├── flake.nix            ← flake principal (input infra + colmena)
-├── justfile             ← commandes just (deploy, generate-mesh, etc.)
-├── .sops.yaml           ← destinataires Age autorisés
-├── .gitignore           ← ignore inventory/keys/ et wireguard/
-├── config/              ← choix fonctionnels infra.*, sans plomberie
-│   ├── default.nix      ← imports de tous les fichiers de config
-│   ├── acme/acme.nix
-│   ├── grafana/grafana.nix
-│   └── ...
-├── secrets/
-│   ├── default.nix      ← adaptateur technique SOPS → options *File
-│   ├── README.md        ← schéma et procédure
-│   └── *.json           ← secrets chiffrés, un fichier par application
+```text
+├── flake.nix
+├── config/              # choix fonctionnels finaux
+├── secrets/             # fichiers SOPS chiffrés
 ├── inventory/
-│   ├── nodes.nix        ← topologie (IPs, tags, clé SSH)
-│   ├── hardware/        ← placeholder suivi, remplacé par adopt-hardware
-│   ├── wireguard/       ← généré par generate-mesh
-│   └── keys/            ← généré par export-ssh-key
-└── README.md            ← ce fichier
+│   ├── nodes.nix        # topologie et tags
+│   ├── hardware/        # configurations matérielles
+│   ├── wireguard/       # clés générées, privées ignorées
+│   └── keys/            # clés générées, privées ignorées
+└── README.md
 ```
 
-## Commandes utiles
+## Ajouter un nœud
 
-| Commande             | Description                              |
-|----------------------|------------------------------------------|
-| `just`               | Liste toutes les commandes               |
-| `just check`         | Évalue tous les nœuds sans déployer      |
-| `just prepare`       | Prépare les fichiers locaux              |
-| `just deploy`        | Déploiement complet (tous les nœuds)     |
-| `just deploy vps1`   | Déploiement sur un seul nœud             |
-| `just update-lib`    | Met à jour la librairie publique         |
-| `just generate-mesh` | Régénère le mesh WireGuard               |
-| `just adopt-hardware`| Re-télécharge les configs hardware       |
-| `just export-keys`   | Re-exporte les clés SSH                  |
-| `infect-server`      | Infecte un VPS (une seule fois)          |
+1. Ajoute-le dans `inventory/nodes.nix`.
+2. Lance `infect-server` sur ce serveur.
+3. Lance `init-project`, puis `deploy-project <hôte>`.
 
-## Ajouter un nouveau nœud
+`init-project` recalcule les destinataires SOPS et re-chiffre les fichiers dans
+une zone temporaire avant de remplacer les versions existantes.
 
-1. Ajoute le nœud dans `inventory/nodes.nix` avec ses IPs et tags
-2. `infect-server -i ~/.ssh/id_ed25519 root@<ip>`
-3. `just prepare`
-4. `just check`
-5. `just deploy`
+## Ajouter une application
 
-Tous les nœuds seront re-déployés avec la nouvelle topologie (WireGuard,
-ACLs, etc.).
+1. Ajoute son tag dans `inventory/nodes.nix`.
+2. Ajoute ses choix non secrets dans `config/<app>/<app>.nix` et son import.
+3. Lance `init-project`, complète les champs signalés, puis déploie.
 
-## Ajouter une nouvelle application
-
-1. Ajoute le tag correspondant au nœud dans `inventory/nodes.nix`
-2. Crée dans `config/<app>/<app>.nix` uniquement les choix `infra.<app>`
-3. Ajoute l'import dans `config/default.nix`
-4. Si nécessaire, branche son fichier chiffré dans `secrets/default.nix`
-5. `just check`, puis `just deploy`
-
-## Paquets customs et modules privés
-
-### Binaires précompilés
-
-Si vous avez besoin d'intégrer des binaires précompilés sans code source,
-vous pouvez créer vos propres dérivations Nix. Ajoutez un dossier `pkgs/`
-dans votre dépôt privé contenant des fichiers comme celui-ci :
-
-```nix
-# pkgs/mon-app/mon-app.nix
-{ stdenv, fetchurl, autoPatchelfHook }:
-stdenv.mkDerivation {
-  pname = "mon-app";
-  version = "1.0.0";
-  src = fetchurl {
-    url = "https://example.com/mon-app-linux64";
-    sha256 = "sha256-...";
-  };
-  dontUnpack = true;
-  nativeBuildInputs = [ autoPatchelfHook ];
-  buildInputs = [ stdenv.cc.cc.lib ];
-  installPhase = ''
-    install -m755 -D $src $out/bin/mon-app
-  '';
-}
-```
-
-Puis importez le paquet dans votre flake et référencez-le dans vos modules
-via `pkgs.callPackage ./pkgs/mon-app/mon-app.nix {}`.
-
-### Modules NixOS customs
-
-Vous pouvez créer vos propres modules NixOS dans votre dépôt privé
-(par exemple dans un dossier `modules/`). Importez-les dans le `flake.nix`
-privé en les ajoutant aux `imports` de la fonction `mkNode` :
-
-```nix
-mkNode = name: node: {
-  imports = [
-    ./inventory/hardware/${name}/hardware.nix
-    ./config
-    ./modules                    # vos modules customs
-    infra.nixosModules.default
-  ];
-  # ...
-};
-```
-
-Les modules customs peuvent déclarer leurs propres options `infra.*`
-et utiliser `services.hasTag`, `ops.mkSecretKeys`, etc. comme n'importe
-quel module du dépôt public.
+Les modules standards connaissent déjà leurs fichiers et chemins SOPS. Pour un
+module privé, garde son adaptateur secret dans ce module privé.

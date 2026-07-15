@@ -79,18 +79,16 @@ nix develop
 # 3. Infecter chaque VPS ; -p est le port Debian, --post-port le port NixOS
 infect-server -i ~/.ssh/id_ed25519 -p 22 --post-port 22 root@203.0.113.10
 
-# 4. Récupérer le hardware et préparer les clés
-just prepare
+# 4. Préparer le hardware, les clés et les fichiers SOPS manquants
+init-project
 
-# 5. Configurer .sops.yaml et créer les secrets/*.json chiffrés
+# 5. Compléter uniquement les champs signalés, puis vérifier
 sops secrets/acme.json
+check-project
 
-# 6. Évaluer tous les nœuds
-just check
-
-# 7. Déployer après validation
-just deploy vps1
-just deploy
+# 6. Déployer après validation
+deploy-project vps1
+deploy-project
 ```
 
 Le guide du dépôt généré se trouve dans
@@ -178,12 +176,12 @@ Le squelette complet et les règles de portée sont documentés dans
 
 ## Secrets
 
-Le dépôt public reste indépendant du backend de secrets :
+Le module principal reste indépendant du backend de secrets :
 
 - une ancienne valeur texte peut être envoyée par `ops.mkSecretKeys` via
   `deployment.keys` Colmena ;
 - les options `*File` permettent de fournir un chemin runtime tel que
-  `/run/secrets/...`, notamment avec `sops-nix` dans le dépôt privé ;
+  `/run/secrets/...` ;
 - un module interdit de fournir simultanément la valeur texte et son fichier ;
 - un secret runtime n'est jamais lu avec `builtins.readFile`.
 
@@ -192,9 +190,10 @@ privé en clair peut encore être copié dans le store de la machine qui évalue
 Pour une nouvelle infrastructure, préférez des fichiers chiffrés dans le dépôt
 privé.
 
-Dans le template privé, `config/` ne contient que les choix fonctionnels
-`infra.*`. Toute la plomberie SOPS et les options `*File` sont centralisées
-dans `secrets/default.nix`; un check interdit leur retour dans `config/`.
+Le module public optionnel `nixosModules.sops` importe `sops-nix` et fournit le
+câblage standard, découpé par service. Le dépôt privé indique son dossier
+`secrets/` et ne conserve que les valeurs finales chiffrées. `config/` reste
+limité aux choix fonctionnels `infra.*`.
 
 ## Outils
 
@@ -208,6 +207,10 @@ Les commandes suivantes sont fournies par le dev shell :
 | `generate-mesh` | Créer les clés WireGuard absentes et recalculer les clés publiques |
 | `export-ssh-key` | Dériver les clés publiques depuis `node.sshKey` |
 | `generate-key` | Créer ou republier la clé du cert-syncer |
+| `update-sops-keys` | Mettre à jour `.sops.yaml` et re-chiffrer sans exposer les valeurs |
+| `init-project` | Préparer un dépôt privé et créer ses secrets manquants |
+| `check-project` | Vérifier les secrets, le flake et tous les nœuds Colmena |
+| `deploy-project [hôte]` | Initialiser, vérifier et déployer |
 
 ## Structure du dépôt
 
@@ -232,8 +235,8 @@ Les commandes suivantes sont fournies par le dev shell :
 # Dépôt public : modules synthétiques, template et scripts
 nix flake check --all-systems
 
-# Dépôt privé généré : flake puis drvPath de chaque nœud Colmena
-just check
+# Dépôt privé généré : secrets, flake puis drvPath de chaque nœud Colmena
+check-project
 ```
 
 Le check « services stables » exclut volontairement Kanidm et Rclone. Le check
