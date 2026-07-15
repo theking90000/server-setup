@@ -9,7 +9,7 @@
 # sur l'état du backup (timestamp, taille, snapshots).
 #
 # Tags requis : `backup`
-# Secrets     : `infra.restic.{repository, password, env}` (Colmena)
+# Secrets     : SOPS colocalisé, avec options texte/*File pour compatibilité
 # -------------------------------------------------------------------------
 {
   config,
@@ -27,10 +27,33 @@ let
   backupPaths = config.infra.backup.paths;
 
   repositoryPath =
-    if cfg.repositoryFile != null then cfg.repositoryFile else "/var/lib/secrets/restic/repository";
+    if cfg.repositoryFile != null then
+      cfg.repositoryFile
+    else if cfg.repository != null then
+      "/var/lib/secrets/restic/repository"
+    else
+      "/run/secrets/restic/repository";
   passwordPath =
-    if cfg.passwordFile != null then cfg.passwordFile else "/var/lib/secrets/restic/password";
-  envPath = if cfg.envFile != null then cfg.envFile else "/var/lib/secrets/restic/env";
+    if cfg.passwordFile != null then
+      cfg.passwordFile
+    else if cfg.password != null then
+      "/var/lib/secrets/restic/password"
+    else
+      "/run/secrets/restic/password";
+  envPath =
+    if cfg.envFile != null then
+      cfg.envFile
+    else if cfg.env != null then
+      "/var/lib/secrets/restic/env"
+    else
+      "/run/secrets/restic/env";
+  useSopsRepository = enabled && cfg.repository == null && cfg.repositoryFile == null;
+  useSopsPassword = enabled && cfg.password == null && cfg.passwordFile == null;
+  useSopsEnv = enabled && cfg.env == null && cfg.envFile == null;
+  sopsSecret = key: {
+    sopsFile = config.infra.sops.secretsDirectory + "/restic.json";
+    inherit key;
+  };
 in
 {
   # Public API
@@ -76,16 +99,24 @@ in
     # Module contract
     { infra.registeredTags = [ tag ]; }
 
+    {
+      sops.secrets = {
+        "restic/repository" = lib.mkIf useSopsRepository (sopsSecret "repository");
+        "restic/password" = lib.mkIf useSopsPassword (sopsSecret "password");
+        "restic/env" = lib.mkIf useSopsEnv (sopsSecret "env");
+      };
+    }
+
     # Local configuration
     (lib.mkIf enabled {
       assertions = [
         {
-          assertion = (cfg.repository != null) != (cfg.repositoryFile != null);
-          message = "Set exactly one of infra.restic.repository or infra.restic.repositoryFile on backup nodes.";
+          assertion = cfg.repository == null || cfg.repositoryFile == null;
+          message = "Set at most one of infra.restic.repository or infra.restic.repositoryFile on backup nodes.";
         }
         {
-          assertion = (cfg.password != null) != (cfg.passwordFile != null);
-          message = "Set exactly one of infra.restic.password or infra.restic.passwordFile on backup nodes.";
+          assertion = cfg.password == null || cfg.passwordFile == null;
+          message = "Set at most one of infra.restic.password or infra.restic.passwordFile on backup nodes.";
         }
         {
           assertion = cfg.env == null || cfg.envFile == null;
@@ -117,7 +148,7 @@ in
           Persistent = true;
         };
       }
-      // lib.optionalAttrs (cfg.env != null || cfg.envFile != null) {
+      // lib.optionalAttrs (cfg.env != null || cfg.envFile != null || useSopsEnv) {
         environmentFile = envPath;
       };
     })

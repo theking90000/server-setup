@@ -176,13 +176,15 @@ Le squelette complet et les règles de portée sont documentés dans
 
 ## Secrets
 
-Le module principal reste indépendant du backend de secrets :
+Le module principal importe `sops-nix` et chaque service possède sa déclaration
+SOPS :
 
 - une ancienne valeur texte peut être envoyée par `ops.mkSecretKeys` via
   `deployment.keys` Colmena ;
 - les options `*File` permettent de fournir un chemin runtime tel que
   `/run/secrets/...` ;
 - un module interdit de fournir simultanément la valeur texte et son fichier ;
+- sans valeur texte ni fichier injecté, le module déclare son secret SOPS ;
 - un secret runtime n'est jamais lu avec `builtins.readFile`.
 
 Les valeurs texte évitent le store de la machine cible, mais un dépôt Flake
@@ -190,10 +192,9 @@ privé en clair peut encore être copié dans le store de la machine qui évalue
 Pour une nouvelle infrastructure, préférez des fichiers chiffrés dans le dépôt
 privé.
 
-Le module public optionnel `nixosModules.sops` importe `sops-nix` et fournit le
-câblage standard, découpé par service. Le dépôt privé indique son dossier
-`secrets/` et ne conserve que les valeurs finales chiffrées. `config/` reste
-limité aux choix fonctionnels `infra.*`.
+Le dépôt privé n'importe que `nixosModules.default`, indique
+`infra.sops.secretsDirectory`, et ne conserve que les valeurs finales chiffrées.
+`config/` reste limité aux choix fonctionnels `infra.*`.
 
 ## Outils
 

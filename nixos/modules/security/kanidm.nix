@@ -100,6 +100,7 @@ let
 
   hasProvisioning = cfg.users != { } || cfg.groups != { } || cfg.oauth2 != { } || sso != { };
   idmAdminPasswordFile = "/run/secrets/kanidm/idm-admin-password";
+  useSopsIdmAdminPassword = enabled && sso != { };
 
   kanidmBasePackage =
     if pkgs ? kanidm_1_10 then
@@ -236,6 +237,15 @@ in
 
   config = lib.mkMerge [
     { infra.registeredTags = [ tag ]; }
+
+    (lib.mkIf useSopsIdmAdminPassword {
+      sops.secrets."kanidm/idm-admin-password" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/kanidm.json";
+        key = "idm_admin_password";
+        owner = "kanidm";
+        mode = "0400";
+      };
+    })
 
     (lib.mkIf enabled {
       assertions = [

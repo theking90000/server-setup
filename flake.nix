@@ -42,6 +42,8 @@
               };
               infra.nodeName = "test";
               infra.nodes = nodes;
+              infra.sops.secretsDirectory = ./tests/sops;
+              sops.validateSopsFiles = false;
               system.stateVersion = "25.11";
             }
           ]
@@ -51,6 +53,7 @@
         publicIp = "192.0.2.1";
         vpnIp = "10.100.0.1";
         sshPort = 2222;
+        wireguardPublicKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
       };
       mkEvalCheck =
         name: node:
@@ -60,11 +63,16 @@
         checkPkgs.runCommand name { } ''
           echo ${lib.escapeShellArg drvPath} > "$out"
         '';
-      minimalNode = mkNode {
-        test = baseNode // {
-          tags = [ ];
-        };
-      } [ ];
+      minimalNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [ ];
+            };
+          }
+          [
+            { infra.wireguard.privateKeyFile = "/tmp/wireguard-private-key"; }
+          ];
       optionalUrlsNode =
         mkNode
           {
@@ -199,7 +207,70 @@
           tags = [ ];
         };
       } [ ./template/config ];
-      sopsNode =
+      wireguardSopsNode = mkNode {
+        test = baseNode // {
+          tags = [ ];
+        };
+      } [ ];
+      acmeIssuerSopsNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [ "acme-issuer" ];
+            };
+          }
+          [
+            {
+              infra.acme = {
+                email = "test@example.test";
+                dnsProvider = "ovh";
+                certSyncerPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest";
+                domains = [ { domain = "example.test"; } ];
+              };
+            }
+          ];
+      acmeConsumerSopsNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [ ];
+            };
+            issuer = baseNode // {
+              publicIp = "192.0.2.2";
+              vpnIp = "10.100.0.2";
+              tags = [ "acme-issuer" ];
+            };
+          }
+          [
+            { infra.acme.domains = [ { domain = "example.test"; } ]; }
+          ];
+      grafanaSopsNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [
+                "grafana"
+                "kanidm"
+              ];
+            };
+          }
+          [
+            {
+              infra.grafana.url = "https://grafana.example.test";
+              infra.kanidm.url = "https://auth.example.test";
+            }
+          ];
+      registrySopsNode = mkNode {
+        test = baseNode // {
+          tags = [ "applications/docker-registry" ];
+        };
+      } [ ];
+      resticSopsNode = mkNode {
+        test = baseNode // {
+          tags = [ "backup" ];
+        };
+      } [ ];
+      rcloneSopsNode =
         mkNode
           {
             test = baseNode // {
@@ -207,25 +278,30 @@
             };
           }
           [
-            self.nixosModules.sops
             {
-              infra.sops.secretsDirectory = ./tests/sops;
-              sops.validateSopsFiles = false;
+              infra.rcloneSync.mounts.test = {
+                mountPoint = "/mnt/test";
+                targetNodes = [ "test" ];
+                remoteName = "test";
+              };
             }
           ];
+      assertSecret =
+        node: name: file: key:
+        let
+          secret = node.config.sops.secrets.${name};
+        in
+        assert secret.path == "/run/secrets/${name}";
+        assert secret.sopsFile == file;
+        assert secret.key == key;
+        true;
       templateParsed = import ./template/flake.nix;
     in
     {
       nixosModules.default = {
         imports = [
-          ./nixos/modules
-        ];
-      };
-
-      nixosModules.sops = {
-        imports = [
           sops-nix.nixosModules.sops
-          ./nixos/modules/sops
+          ./nixos/modules
         ];
       };
 
@@ -256,10 +332,14 @@
           );
 
       checks.x86_64-linux = {
-        minimal-module = mkEvalCheck "minimal-module" minimalNode;
+        minimal-module =
+          assert minimalNode.config.sops.secrets == { };
+          mkEvalCheck "minimal-module" minimalNode;
         optional-urls = mkEvalCheck "optional-urls" optionalUrlsNode;
         stable-services = mkEvalCheck "stable-services" stableServicesNode;
-        file-secrets = mkEvalCheck "file-secrets" fileSecretsNode;
+        file-secrets =
+          assert fileSecretsNode.config.sops.secrets == { };
+          mkEvalCheck "file-secrets" fileSecretsNode;
         grafana-sso =
           assert builtins.hasAttr "grafana" grafanaSsoNode.config.infra.sso;
           assert
@@ -299,13 +379,12 @@
         gitea-sso =
           assert builtins.attrNames giteaSsoNode.config.infra.sso.gitea.groups == [ "users" ];
           assert !giteaSsoNode.config.infra.sso.gitea.pkce;
-          assert giteaSsoNode.config.infra.sso.gitea.redirectUris == [
-            "https://git.example.test/user/oauth2/kanidm/callback"
-          ];
           assert
-            giteaSsoNode.config.services.gitea.settings.oauth2_client.ACCOUNT_LINKING == "login";
-          assert
-            giteaSsoNode.config.services.gitea.settings.oauth2_client.USERNAME == "preferred_username";
+            giteaSsoNode.config.infra.sso.gitea.redirectUris == [
+              "https://git.example.test/user/oauth2/kanidm/callback"
+            ];
+          assert giteaSsoNode.config.services.gitea.settings.oauth2_client.ACCOUNT_LINKING == "login";
+          assert giteaSsoNode.config.services.gitea.settings.oauth2_client.USERNAME == "preferred_username";
           assert
             giteaSsoNode.config.services.kanidm.provision.systems.oauth2.gitea.allowInsecureClientDisablePkce;
           assert builtins.elem "oidc_client_secret:/run/secrets/sso/gitea-client-secret"
@@ -331,12 +410,56 @@
           assert builtins.isAttrs templateParsed;
           assert builtins.pathExists ./template/inventory/hardware/vps1/hardware.nix;
           mkEvalCheck "template" templateNode;
-        sops-module =
-          assert builtins.hasAttr "wireguard/private-key" sopsNode.config.sops.secrets;
+        sops-wireguard =
+          assert assertSecret wireguardSopsNode "wireguard/private-key" ./tests/sops/wireguard/test.json
+            "privateKey";
           assert
-            sopsNode.config.infra.wireguard.privateKeyFile
-            == sopsNode.config.sops.secrets."wireguard/private-key".path;
-          mkEvalCheck "sops-module" sopsNode;
+            wireguardSopsNode.config.networking.wireguard.interfaces.wg0.privateKeyFile
+            == "/run/secrets/wireguard/private-key";
+          mkEvalCheck "sops-wireguard" wireguardSopsNode;
+        sops-acme =
+          assert assertSecret acmeIssuerSopsNode "acme/dns-credentials" ./tests/sops/acme.json
+            "dnsCredentials";
+          assert assertSecret acmeConsumerSopsNode "acme/syncer-private-key" ./tests/sops/acme-syncer.json
+            "privateKey";
+          assert acmeIssuerSopsNode.config.sops.secrets."acme/dns-credentials".owner == "acme";
+          assert acmeIssuerSopsNode.config.sops.secrets."acme/dns-credentials".group == "acme";
+          assert acmeConsumerSopsNode.config.sops.secrets."acme/syncer-private-key".mode == "0400";
+          mkEvalCheck "sops-acme" acmeIssuerSopsNode;
+        sops-grafana =
+          assert assertSecret grafanaSopsNode "grafana/password" ./tests/sops/grafana.json "password";
+          assert assertSecret grafanaSopsNode "grafana/secret" ./tests/sops/grafana.json "grafana_secret";
+          assert assertSecret grafanaSopsNode "sso/grafana-client-secret" ./tests/sops/grafana.json
+            "oidc_client_secret";
+          assert grafanaSopsNode.config.sops.secrets."sso/grafana-client-secret".owner == "kanidm";
+          mkEvalCheck "sops-grafana" grafanaSopsNode;
+        sops-kanidm =
+          assert assertSecret grafanaSopsNode "kanidm/idm-admin-password" ./tests/sops/kanidm.json
+            "idm_admin_password";
+          assert grafanaSopsNode.config.sops.secrets."kanidm/idm-admin-password".owner == "kanidm";
+          assert grafanaSopsNode.config.sops.secrets."kanidm/idm-admin-password".mode == "0400";
+          mkEvalCheck "sops-kanidm" grafanaSopsNode;
+        sops-gitea =
+          assert assertSecret giteaSsoNode "sso/gitea-client-secret" ./tests/sops/gitea.json
+            "oidc_client_secret";
+          assert giteaSsoNode.config.sops.secrets."sso/gitea-client-secret".owner == "kanidm";
+          assert giteaSsoNode.config.sops.secrets."sso/gitea-client-secret".mode == "0400";
+          mkEvalCheck "sops-gitea" giteaSsoNode;
+        sops-docker-registry =
+          assert assertSecret registrySopsNode "docker-registry/accounts" ./tests/sops/docker-registry.json
+            "accounts";
+          mkEvalCheck "sops-docker-registry" registrySopsNode;
+        sops-restic =
+          assert assertSecret resticSopsNode "restic/repository" ./tests/sops/restic.json "repository";
+          assert assertSecret resticSopsNode "restic/password" ./tests/sops/restic.json "password";
+          assert assertSecret resticSopsNode "restic/env" ./tests/sops/restic.json "env";
+          mkEvalCheck "sops-restic" resticSopsNode;
+        sops-rclone =
+          assert assertSecret rcloneSopsNode "rclone/test" ./tests/sops/rclone-sync.json "test";
+          assert rcloneSopsNode.config.infra.rcloneSync.mounts.test.configFile == null;
+          assert lib.hasInfix "/run/secrets/rclone/test"
+            rcloneSopsNode.config.systemd.services.rclone-config-test.script;
+          mkEvalCheck "sops-rclone" rcloneSopsNode;
         template-config-boundary =
           checkPkgs.runCommand "template-config-boundary"
             {
@@ -353,21 +476,22 @@
           bash ${./scripts/test-infect.sh}
           touch "$out"
         '';
-        sops-script = checkPkgs.runCommand "sops-script"
-          {
-            nativeBuildInputs = [
-              checkPkgs.bash
-              checkPkgs.coreutils
-              checkPkgs.gnugrep
-              checkPkgs.gnused
-              checkPkgs.jq
-              checkPkgs.ripgrep
-            ];
-          }
-          ''
-            bash ${./scripts/test-sops-project.sh}
-            touch "$out"
-          '';
+        sops-script =
+          checkPkgs.runCommand "sops-script"
+            {
+              nativeBuildInputs = [
+                checkPkgs.bash
+                checkPkgs.coreutils
+                checkPkgs.gnugrep
+                checkPkgs.gnused
+                checkPkgs.jq
+                checkPkgs.ripgrep
+              ];
+            }
+            ''
+              bash ${./scripts/test-sops-project.sh}
+              touch "$out"
+            '';
         script-syntax = checkPkgs.runCommand "script-syntax" { nativeBuildInputs = [ checkPkgs.bash ]; } ''
           for script in ${./scripts}/*.sh; do
             bash -n "$script"

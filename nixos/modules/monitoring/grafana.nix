@@ -10,7 +10,7 @@
 # répertoire provisionné dans Grafana.
 #
 # Tags requis : `grafana`
-# Secrets     : `infra.grafana.{password, grafanaSecret}` (Colmena)
+# Secrets     : SOPS colocalisé, avec options texte/*File pour compatibilité
 # -------------------------------------------------------------------------
 {
   config,
@@ -31,14 +31,25 @@ let
   grafanaAvailable = services.getHostsByTag tag != [ ];
   ssoEnabled = kanidmAvailable && grafanaAvailable && cfg.url != null;
   ssoSecretFile = "/run/secrets/sso/grafana-client-secret";
+  ssoSecretRequiredHere = ssoEnabled && (enabled || services.hasTag "kanidm");
+
+  useSopsPassword = enabled && cfg.password == null && cfg.passwordFile == null;
+  useSopsGrafanaSecret = enabled && cfg.grafanaSecret == null && cfg.grafanaSecretFile == null;
 
   passwordPath =
-    if cfg.passwordFile != null then cfg.passwordFile else "/var/lib/secrets/grafana/password";
+    if cfg.passwordFile != null then
+      cfg.passwordFile
+    else if cfg.password != null then
+      "/var/lib/secrets/grafana/password"
+    else
+      "/run/secrets/grafana/password";
   secretPath =
     if cfg.grafanaSecretFile != null then
       cfg.grafanaSecretFile
+    else if cfg.grafanaSecret != null then
+      "/var/lib/secrets/grafana/grafana_secret"
     else
-      "/var/lib/secrets/grafana/grafana_secret";
+      "/run/secrets/grafana/secret";
 
   dashboardsDir = pkgs.linkFarm "grafana-dashboards" (
     lib.imap0 (i: path: {
@@ -108,16 +119,38 @@ in
     # Module contract
     { infra.registeredTags = [ tag ]; }
 
+    {
+      sops.secrets = {
+        "grafana/password" = lib.mkIf useSopsPassword {
+          sopsFile = config.infra.sops.secretsDirectory + "/grafana.json";
+          key = "password";
+        };
+        "grafana/secret" = lib.mkIf useSopsGrafanaSecret {
+          sopsFile = config.infra.sops.secretsDirectory + "/grafana.json";
+          key = "grafana_secret";
+        };
+      };
+    }
+
+    (lib.mkIf ssoSecretRequiredHere {
+      sops.secrets."sso/grafana-client-secret" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/grafana.json";
+        key = "oidc_client_secret";
+        owner = if services.hasTag "kanidm" then "kanidm" else "root";
+        mode = "0400";
+      };
+    })
+
     # Local configuration
     (lib.mkIf enabled {
       assertions = [
         {
-          assertion = (cfg.password != null) != (cfg.passwordFile != null);
-          message = "Set exactly one of infra.grafana.password or infra.grafana.passwordFile on nodes tagged grafana.";
+          assertion = cfg.password == null || cfg.passwordFile == null;
+          message = "Set at most one of infra.grafana.password or infra.grafana.passwordFile on nodes tagged grafana.";
         }
         {
-          assertion = (cfg.grafanaSecret != null) != (cfg.grafanaSecretFile != null);
-          message = "Set exactly one of infra.grafana.grafanaSecret or infra.grafana.grafanaSecretFile on nodes tagged grafana.";
+          assertion = cfg.grafanaSecret == null || cfg.grafanaSecretFile == null;
+          message = "Set at most one of infra.grafana.grafanaSecret or infra.grafana.grafanaSecretFile on nodes tagged grafana.";
         }
         {
           assertion = !kanidmAvailable || cfg.url != null;

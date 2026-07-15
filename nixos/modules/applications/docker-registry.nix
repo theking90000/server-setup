@@ -7,7 +7,7 @@
 # les règles ACL + ingress Nginx + télémétrie Prometheus.
 #
 # Tags requis : `applications/docker-registry`
-# Secrets     : `infra.dockerRegistry.accounts` (déployé via Colmena)
+# Secrets     : SOPS colocalisé, avec options texte/*File pour compatibilité
 # -------------------------------------------------------------------------
 {
   config,
@@ -25,7 +25,13 @@ let
   metricsPort = 5001;
   dataDir = "/var/lib/docker-registry";
   accountsPath =
-    if cfg.accountsFile != null then cfg.accountsFile else "/var/lib/secrets/docker-registry/accounts";
+    if cfg.accountsFile != null then
+      cfg.accountsFile
+    else if cfg.accounts != null then
+      "/var/lib/secrets/docker-registry/accounts"
+    else
+      "/run/secrets/docker-registry/accounts";
+  useSops = enabled && cfg.accounts == null && cfg.accountsFile == null;
 in
 {
   # Public API
@@ -53,12 +59,19 @@ in
     # Module contract
     { infra.registeredTags = [ tag ]; }
 
+    (lib.mkIf useSops {
+      sops.secrets."docker-registry/accounts" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/docker-registry.json";
+        key = "accounts";
+      };
+    })
+
     # Local configuration
     (lib.mkIf enabled {
       assertions = [
         {
-          assertion = (cfg.accounts != null) != (cfg.accountsFile != null);
-          message = "Set exactly one of infra.dockerRegistry.accounts or infra.dockerRegistry.accountsFile on registry nodes.";
+          assertion = cfg.accounts == null || cfg.accountsFile == null;
+          message = "Set at most one of infra.dockerRegistry.accounts or infra.dockerRegistry.accountsFile on registry nodes.";
         }
       ];
 

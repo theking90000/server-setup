@@ -45,12 +45,21 @@ let
       configFile =
         if mount.configFile != null then
           mount.configFile
+        else if mount.configContent != null then
+          null
         else
-          cfg.runtimeConfigFiles.${name} or null;
+          cfg.runtimeConfigFiles.${name} or "/run/secrets/rclone/${name}";
     }
   ) cfg.mounts;
 
   mountedHere = lib.filterAttrs (_: m: builtins.elem nodeName m.targetNodes) effectiveMounts;
+  sopsMountsHere = lib.filterAttrs (
+    name: mount:
+    builtins.elem nodeName mount.targetNodes
+    && mount.configContent == null
+    && mount.configFile == null
+    && !(builtins.hasAttr name cfg.runtimeConfigFiles)
+  ) cfg.mounts;
   hasMounts = mountedHere != { };
 
   # Options rclone (key=value) → converties en RCLONE_KEY via args2env
@@ -155,7 +164,7 @@ in
     runtimeConfigFiles = mkOption {
       type = types.attrsOf types.str;
       default = { };
-      description = "Chemins runtime fournis par un adaptateur de secrets, indexés par nom de montage.";
+      description = "Chemins runtime alternatifs, indexés par nom de montage.";
     };
 
     mounts = mkOption {
@@ -297,6 +306,16 @@ in
         assertion = mountCfg.configContent == null || mountCfg.configFile == null;
         message = "Rclone mount ${mountName}: set at most one of configContent or configFile.";
       }) mountedHere;
+    }
+
+    {
+      sops.secrets = lib.mapAttrs' (
+        name: _:
+        lib.nameValuePair "rclone/${name}" {
+          sopsFile = config.infra.sops.secretsDirectory + "/rclone-sync.json";
+          key = name;
+        }
+      ) sopsMountsHere;
     }
 
     # ═══ Secrets (deployment.keys) ═══

@@ -34,19 +34,36 @@ let
   issuerHosts = services.getHostsByTag tag;
   hasDomains = cfg.domains != [ ];
 
+  useSopsDnsCredentials =
+    isIssuer && hasDomains && cfg.dnsCredentials == null && cfg.dnsCredentialsFile == null;
+  useSopsSyncerPrivateKey =
+    !isIssuer && hasDomains && cfg.certSyncerPrivateKey == null && cfg.certSyncerPrivateKeyFile == null;
+
   getVal = local: global: if local != null then local else global;
   certName = domain: lib.replaceStrings [ "*" ] [ "_" ] domain;
 
   dnsCredentialsPath =
     if cfg.dnsCredentialsFile != null then
       cfg.dnsCredentialsFile
+    else if cfg.dnsCredentials != null then
+      "/var/lib/secrets/acme/dnsCredentials"
     else
-      "/var/lib/secrets/acme/dnsCredentials";
+      "/run/secrets/acme/dns-credentials";
   certSyncerPrivateKeyPath =
     if cfg.certSyncerPrivateKeyFile != null then
       cfg.certSyncerPrivateKeyFile
+    else if cfg.certSyncerPrivateKey != null then
+      "/var/lib/secrets/syncer.key"
     else
-      "/var/lib/secrets/syncer.key";
+      "/run/secrets/acme/syncer-private-key";
+
+  certSyncerPublicKey =
+    if cfg.certSyncerPublicKey != null then
+      cfg.certSyncerPublicKey
+    else if cfg.certSyncerPublicKeyFile != null then
+      builtins.readFile cfg.certSyncerPublicKeyFile
+    else
+      null;
 
   missingDnsCredentials = lib.any (
     domain:
@@ -137,11 +154,34 @@ in
       default = null;
       description = "Clé publique SSH de l'utilisateur cert-syncer (pour authorized_keys).";
     };
+
+    certSyncerPublicKeyFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = "Fichier contenant la clé publique SSH du cert-syncer.";
+    };
   };
 
   config = lib.mkMerge [
     # Module contract
     { infra.registeredTags = [ tag ]; }
+
+    (lib.mkIf useSopsDnsCredentials {
+      sops.secrets."acme/dns-credentials" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/acme.json";
+        key = "dnsCredentials";
+        owner = "acme";
+        group = "acme";
+      };
+    })
+
+    (lib.mkIf useSopsSyncerPrivateKey {
+      sops.secrets."acme/syncer-private-key" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/acme-syncer.json";
+        key = "privateKey";
+        mode = "0400";
+      };
+    })
 
     # Local configuration shared by issuers and consumers
     (lib.mkIf hasDomains {
@@ -165,7 +205,7 @@ in
           message = "infra.acme.email is required on an ACME issuer with configured domains.";
         }
         {
-          assertion = !missingDnsCredentials;
+          assertion = !missingDnsCredentials || useSopsDnsCredentials;
           message = "infra.acme.dnsCredentials or a per-domain credentialsFile is required when using a DNS provider.";
         }
         {
@@ -173,8 +213,8 @@ in
           message = "Set at most one of infra.acme.dnsCredentials or infra.acme.dnsCredentialsFile.";
         }
         {
-          assertion = cfg.certSyncerPublicKey != null;
-          message = "infra.acme.certSyncerPublicKey is required on an ACME issuer with configured domains.";
+          assertion = certSyncerPublicKey != null;
+          message = "infra.acme.certSyncerPublicKey or infra.acme.certSyncerPublicKeyFile is required on an ACME issuer with configured domains.";
         }
       ];
 
@@ -185,8 +225,8 @@ in
       users.users.cert-syncer = {
         isNormalUser = true;
         group = "cert-syncer";
-        openssh.authorizedKeys.keys = lib.mkIf (cfg.certSyncerPublicKey != null) [
-          ''command="${pkgs.rrsync}/bin/rrsync -ro /var/lib/acme/",restrict ${cfg.certSyncerPublicKey}''
+        openssh.authorizedKeys.keys = lib.mkIf (certSyncerPublicKey != null) [
+          ''command="${pkgs.rrsync}/bin/rrsync -ro /var/lib/acme/",restrict ${certSyncerPublicKey}''
         ];
       };
 
@@ -241,8 +281,8 @@ in
     (lib.mkIf (!isIssuer && hasDomains && issuerHosts != [ ]) {
       assertions = [
         {
-          assertion = (cfg.certSyncerPrivateKey != null) != (cfg.certSyncerPrivateKeyFile != null);
-          message = "Set exactly one of infra.acme.certSyncerPrivateKey or infra.acme.certSyncerPrivateKeyFile on certificate consumers.";
+          assertion = cfg.certSyncerPrivateKey == null || cfg.certSyncerPrivateKeyFile == null;
+          message = "Set at most one of infra.acme.certSyncerPrivateKey or infra.acme.certSyncerPrivateKeyFile on certificate consumers.";
         }
       ];
 

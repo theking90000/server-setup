@@ -25,6 +25,7 @@ let
   giteaAvailable = services.getHostsByTag tag != [ ];
   ssoEnabled = kanidmAvailable && giteaAvailable && cfg.url != null;
   ssoSecretFile = "/run/secrets/sso/gitea-client-secret";
+  ssoSecretRequiredHere = ssoEnabled && (enabled || services.hasTag "kanidm");
   giteaExe = lib.getExe config.services.gitea.package;
 in
 {
@@ -46,6 +47,15 @@ in
   config = lib.mkMerge [
     # Module contract
     { infra.registeredTags = [ tag ]; }
+
+    (lib.mkIf ssoSecretRequiredHere {
+      sops.secrets."sso/gitea-client-secret" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/gitea.json";
+        key = "oidc_client_secret";
+        owner = if services.hasTag "kanidm" then "kanidm" else "root";
+        mode = "0400";
+      };
+    })
 
     # Local configuration
     (lib.mkIf enabled {

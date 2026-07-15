@@ -40,7 +40,6 @@
           ./inventory/hardware/${name}/hardware.nix
           ./config
           infra.nixosModules.default
-          infra.nixosModules.sops
         ]
         ++ lib.optionals (builtins.elem "raspberry-pi" node.tags) [
           nixos-raspberrypi.nixosModules.raspberry-pi-5.base
@@ -49,10 +48,8 @@
 
         infra.nodeName = name;
 
-        infra.sops = {
-          secretsDirectory = ./secrets;
-          certSyncerPublicKeyFile = ./inventory/keys/syncer.key.pub;
-        };
+        infra.sops.secretsDirectory = ./secrets;
+        infra.acme.certSyncerPublicKeyFile = ./inventory/keys/syncer.key.pub;
 
         infra.nodes = lib.mkMerge [
           nodesData.nodes

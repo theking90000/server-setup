@@ -1,7 +1,8 @@
 # Secrets du projet
 
 Ce dossier ne contient que les fichiers JSON chiffrés. Le câblage standard
-SOPS vers les options `infra.*File` est fourni par `infra.nixosModules.sops`.
+SOPS est inclus dans `infra.nixosModules.default` et appartient à chaque module
+de service.
 
 ```sh
 init-project                 # crée les fichiers manquants et affiche les champs à remplir

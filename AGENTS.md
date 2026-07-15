@@ -73,8 +73,8 @@ direct file path in `/var/lib/secrets/<app>/`.
 In private repositories, `config/` is a strict functional boundary: it may
 only set readable `infra.<app>` choices such as URLs, ports or feature flags.
 SOPS declarations, runtime secret paths, owners, tag guards and systemd details
-belong in the optional public SOPS adapter, or in a project-specific private
-module, and are forbidden in `config/`.
+belong in the public module that owns the service, or in a project-specific
+private module, and are forbidden in `config/`.
 
 ### Bootstrap
 

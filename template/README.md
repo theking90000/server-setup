@@ -48,8 +48,8 @@ secrets JSON chiffrés par SOPS.
 - `config/` contient uniquement les choix fonctionnels `infra.*` : URLs, ports,
   tags et options de service.
 - `secrets/` contient uniquement les JSON chiffrés et leur courte documentation.
-- Le câblage standard SOPS est fourni par `infra.nixosModules.sops` depuis le
-  dépôt public ; il n'est pas recopié ici.
+- Le câblage standard SOPS est inclus dans `infra.nixosModules.default` et
+  colocalisé dans chaque module de service ; il n'est pas recopié ici.
 - Les fichiers privés WireGuard et cert-syncer restent ignorés par Git.
 - Un module privé spécifique déclare lui-même ses éventuels secrets spécifiques.
 

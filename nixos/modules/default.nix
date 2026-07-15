@@ -17,6 +17,8 @@
 #   - lib/services  : helpers hasTag, getVpnIpsByTag, getHostsByTag
 #   - lib/ops       : mkSecretKeys (déploiement de secrets via Colmena)
 # -------------------------------------------------------------------------
+{ lib, ... }:
+
 {
   imports = [
     ../lib/services.nix
@@ -30,4 +32,11 @@
     ./security
     ./web
   ];
+
+  options.infra.sops.secretsDirectory = lib.mkOption {
+    type = lib.types.path;
+    description = "Dossier privé contenant les fichiers JSON chiffrés avec SOPS.";
+  };
+
+  config.sops.age.sshKeyPaths = [ "/etc/ssh/ssh_host_ed25519_key" ];
 }
