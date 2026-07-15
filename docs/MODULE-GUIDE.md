@@ -1,78 +1,110 @@
-# Guide: Writing a New Module
+# Écrire un module `server-setup`
 
-This guide explains how to create a new module in this NixOS configuration — from
-file structure and options to tag registration, service discovery, secrets, and
-cross-module integration.
+Ce guide décrit le contrat complet d'un module public ou privé. Le principe
+central est simple : **un service possède toute sa configuration dans son
+module**. Le même fichier déclare son activation, ses secrets SOPS, son réseau,
+ses ACL, son ingress, ses sauvegardes, ses métriques, ses dashboards et son SSO.
 
----
+Les modules transversaux (`nginx`, `prometheus`, `grafana`, `restic`, `kanidm`)
+ne connaissent pas chaque application. Ils agrègent les contributions que les
+modules applicatifs publient dans les options `infra.*`.
 
-## 1. Module Architecture
+## 1. Avant de créer un module
 
-```
-nixos/
-  modules/
-    default.nix              ← top-level: imports lib/ + nodes.nix + all subdirs
-    nodes.nix                ← declares infra.nodeName, infra.nodes, infra.registeredTags
-  lib/
-    services.nix             ← _module.args.services (hasTag, getVpnIpsByTag, …)
-    ops.nix                  ← _module.args.ops (mkSecretKeys)
-  modules/
-    applications/            ← each app = one file + a default.nix import aggregator
-    backup/                  ← backup modules
-    monitoring/              ← monitoring modules
-    web/                     ← nginx + ingress option declaration
-    network/                 ← wireguard, ssh, base network
-    security/                ← acls, acme
-```
+Un nouveau module est justifié si le service a sa propre responsabilité de
+déploiement. Ne créez pas :
 
-Every NixOS module receives:
-```nix
-{ config, lib, pkgs, ... }:
-```
+- un adaptateur séparé pour ses secrets ;
+- un fichier par intégration (`myapp-grafana.nix`, `myapp-backup.nix`, etc.) ;
+- une abstraction générique utilisée par un seul service ;
+- un tag si l'activation est déjà naturellement exprimée par une liste de
+  cibles, comme `infra.rcloneSync.mounts.<name>.targetNodes`.
 
-Additionally, via `_module.args` (injected by `modules/default.nix`):
-```nix
-{ services, ops, ... }:
-```
+Choisissez ensuite son emplacement :
 
-| Argument   | Source              | Purpose                                                |
-|------------|---------------------|--------------------------------------------------------|
-| `services` | `lib/services.nix`  | Tag queries, host/IP discovery                         |
-| `ops`      | `lib/ops.nix`       | Secret deployment via Colmena (`mkSecretKeys`)         |
+| Emplacement | Usage |
+|---|---|
+| `nixos/modules/applications/` | Application réutilisable |
+| `nixos/modules/monitoring/` | Collecte ou visualisation |
+| `nixos/modules/network/` | Réseau, montage ou transport |
+| `nixos/modules/security/` | Identité, certificats ou contrôle d'accès |
+| `nixos/modules/backup/` | Mécanisme de sauvegarde |
+| `<repo-prive>/modules/` | Service propre à une seule infrastructure |
 
----
+Un module public est ajouté au `default.nix` de sa catégorie. Un module privé
+est importé par le `flake.nix` privé. Les deux suivent exactement le même
+contrat.
 
-## 2. File Checklist
+## 2. Le modèle de flotte
 
-To add a new application module:
+### 2.1 Tags
 
-1. **Create** `nixos/modules/<category>/<name>.nix`
-2. **Add it** to `nixos/modules/<category>/default.nix`:
-   ```nix
-   {
-     imports = [
-       ./existing.nix
-       ./<name>.nix    # ← add your module here
-     ];
-   }
-   ```
-3. **Declare user-configurable options** in the private repo (see §12)
-
----
-
-## 3. Module Skeleton
-
-Every application module follows this shape:
+Le dépôt privé attribue les rôles dans `inventory/nodes.nix` :
 
 ```nix
-# -------------------------------------------------------------------------
-# <name>.nix — <one-line description>
-#
-# <longer description of what the service does>
-#
-# Tags requis : `applications/<name>`
-# Secrets     : `infra.<name>.<field>` (déployé via Colmena)
-# -------------------------------------------------------------------------
+vps1 = {
+  publicIp = "203.0.113.10";
+  vpnIp = "10.100.0.1";
+  tags = [
+    "web-server"
+    "applications/myapp"
+  ];
+};
+```
+
+Chaque tag doit être enregistré par un module, même si aucun nœud ne l'utilise
+encore :
+
+```nix
+{ infra.registeredTags = [ "applications/myapp" ]; }
+```
+
+`nodes.nix` refuse à l'évaluation tout tag inconnu. La convention est
+`applications/<nom>` pour une application et un nom de rôle court pour une
+fonction de flotte (`web-server`, `backup`, `grafana`, etc.).
+
+### 2.2 Helpers injectés
+
+Un module reçoit les helpers par `_module.args` :
+
+```nix
+{ config, lib, pkgs, services, ops, ... }:
+```
+
+| Helper | Résultat |
+|---|---|
+| `services.hasTag tag` | Le nœud courant possède le tag |
+| `services.getHostsByTag tag` | Noms de tous les nœuds portant le tag |
+| `services.getVpnIpsByTag tag` | IP WireGuard de ces nœuds |
+| `services.getVpnIp` | IP WireGuard du nœud courant |
+| `ops.mkSecretKeys` | Compatibilité historique pour `deployment.keys` |
+
+Pour un nouveau module, SOPS est le chemin normal. `ops.mkSecretKeys` sert
+uniquement à préserver les anciennes options texte et les tests existants.
+
+### 2.3 Portée locale et effets inter-nœuds
+
+Chaque nœud NixOS est évalué avec la topologie complète. Une déclaration faite
+pendant l'évaluation d'un nœud peut donc alimenter un agrégateur installé sur un
+autre nœud.
+
+| Contribution | Garde correcte |
+|---|---|
+| Service, paquet, systemd, ACL, chemin de backup | `lib.mkIf enabled` |
+| Télémétrie dérivée de `getHostsByTag` | Aucune garde ; une liste vide est neutre |
+| Dashboard | Présence globale : `getHostsByTag tag != [ ]` |
+| Ingress | URL configurée et backends VPN non vides |
+| Client SSO | Présence globale de l'application et de Kanidm |
+
+Erreur classique : entourer un dashboard avec `services.hasTag tag`. Grafana ne
+le verra alors que si Grafana et l'application sont sur le même nœud.
+
+## 3. Squelette recommandé
+
+Ce squelette montre toutes les responsabilités possibles. Supprimez simplement
+les blocs inutiles au service.
+
+```nix
 {
   config,
   lib,
@@ -88,760 +120,88 @@ let
   enabled = services.hasTag tag;
   port = 8080;
   dataDir = "/var/lib/myapp";
-in
-{
-  # Public API
-  options.infra.myapp = {
-    url = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = "URL publique.";
-    };
 
-    # Add other options here (ports, credentials, etc.)
-  };
-
-  config = lib.mkMerge [
-    # Module contract
-    { infra.registeredTags = [ tag ]; }
-
-    # Local configuration
-    (lib.mkIf enabled {
-      systemd.services.myapp = { ... };
-      infra.backup.paths = [ dataDir ];
-      infra.security.acls = [ {
-        inherit port;
-        allowedTags = [ "web-server" ];
-        description = "MyApp";
-      } ];
-    })
-
-    # Fleet-wide contributions
-    {
-      infra.telemetry."myapp" = map (host: {
-        targets = [ "${host}:${toString port}" ];
-        labels = { inherit host; };
-      }) (services.getHostsByTag tag);
-    }
-
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
-      infra.ingress."myapp" = {
-        url = cfg.url;                                    # auto-extracts domain + path
-        backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
-        blockPaths = [ "/metrics" "/private" ];           # paths to 403
-      };
-    })
-
-    (lib.mkIf (services.getHostsByTag tag != [ ]) {
-      infra.grafana.dashboards = [ ./dashboards/myapp.json ];
-    })
-  ];
-}
-```
-
-This order is intentional: API, module contract, local configuration, then
-fleet-wide contributions. Keep it even when some sections are absent so a
-reader can locate the service, ACLs, backup, telemetry and ingress without
-reconstructing each module's layout.
-
----
-
-## 4. The Tag System
-
-### What are tags?
-
-Tags are arbitrary strings assigned to nodes in the private repo's
-`inventory/services.nix`:
-
-```nix
-# inventory/services.nix (private repo)
-{
-  vps1 = [ "node-metrics" "backup" ];
-  vps2 = [ "web-server" "grafana" ];
-}
-```
-
-### How modules use tags
-
-Each module **declares what tag(s) it handles** and **checks if the current
-node has that tag**:
-
-```nix
-let
-  tag = "web-server";
-  enabled = services.hasTag tag;   # true if current node has "web-server"
-in
-```
-
-### Tag validation
-
-Every tag used on any node must be registered by some module. This happens
-automatically:
-
-```nix
-# In every module:
-config = lib.mkMerge [
-  { infra.registeredTags = [ "my-tag" ]; }
-  ...
-];
-```
-
-The `nodes.nix` assertions check at build time that no node uses an
-unregistered tag. If a tag is missing, the build fails:
-
-```
-Node "vps1": tag "foo" is not handled by any module. Known tags: [ web-server, grafana, ... ]
-```
-
-### Tag naming conventions
-
-| Kind          | Convention                                     | Examples                  |
-|---------------|------------------------------------------------|---------------------------|
-| Core service  | Short descriptive name                         | `web-server`, `backup`, `grafana` |
-| Application   | `applications/<app>`                           | `applications/gitea`, `applications/ntfy`, `applications/jellyfin` |
-
----
-
-## 5. `_module.args` Libraries
-
-### services
-
-Injected from `nixos/lib/services.nix`:
-
-```nix
-services.hasTag tag                # → bool
-services.getHostsByTag tag         # → [string]    hostnames of nodes with tag
-services.getVpnIpsByTag tag        # → [string]    VPN IPs of nodes with tag
-services.getVpnIp                  # → string       this node's VPN IP
-```
-
-Always use `services.getVpnIp` as the bind address (never `0.0.0.0`):
-
-```nix
-listenAddress = services.getVpnIp;
-
-# or as env:
-environment = { HTTP_ADDR = "${services.getVpnIp}:8080"; };
-```
-
-### ops
-
-Injected from `nixos/lib/ops.nix`:
-
-```nix
-ops.mkSecretKeys prefix secrets filterList   # → deployment.keys attrset
-```
-
-See §8 (Secrets) for full details.
-
----
-
-## 6. Service Binding: VPN-Only
-
-All services bind to the VPN IP, never to the public interface:
-
-```nix
-services.dockerRegistry = {
-  listenAddress = services.getVpnIp;    # e.g., 10.100.0.2
-  port = 5000;
-};
-```
-
-The only exception is the Nginx web-server (tagged `web-server`) which binds
-to port 443 on the public interface — but it reads traffic from VPN backends.
-
----
-
-## 7. Self-Registration to Other Services
-
-Modules integrate by **populating options** that other modules consume. You
-NEVER call another module's functions directly — you set options.
-
-### 7.1 Firewall ACLs (`infra.security.acls`)
-
-Every service that listens on a port must declare who can reach it:
-
-```nix
-infra.security.acls = [
-  {
-    port = 5000;
-    allowedTags = [ "web-server" ];       # resolved to VPN IPs
-    description = "Docker registry";
-  }
-  {
-    port = 5001;
-    allowedTags = [ "prometheus" ];
-    description = "Docker registry metrics";
-  }
-];
-```
-
-| Field          | Type      | Description                                    |
-|----------------|-----------|------------------------------------------------|
-| `port`         | int       | TCP/UDP port                                    |
-| `allowedTags`  | [string]  | Tags whose VPN IPs can reach this port          |
-| `allowedIps`   | [string]  | (optional) explicit CIDR ranges                 |
-| `proto`        | string    | `"tcp"` (default) or `"udp"`                    |
-| `trustLocalRoot` | bool    | Allow root from all nodes (default: true)       |
-| `description`  | string    | Human-readable comment                          |
-
-The ACL module resolves tags → VPN IPs at build time and generates nftables
-rules. The final rule list is: accept from matching IPs, then explicit drop.
-
-### 7.2 Backup (`infra.backup.paths`)
-
-Register data directories for Restic backup:
-
-```nix
-infra.backup.paths = [ "/var/lib/gitea" "/var/lib/gitea/config" ];
-```
-
-The `restic.nix` module reads all registered paths from
-`config.infra.backup.paths` and includes them in the backup job.
-
-### 7.3 Ingress / Nginx (`infra.ingress`)
-
-Register a public-facing route for your service. Two methods:
-
-**Method A — URL (recommended)** : le domaine et le chemin sont extraits
-automatiquement de l'URL.
-
-```nix
-(lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
-  infra.ingress."myapp" = {
-    url = cfg.url;                               # "https://exemple.com/app" → domain + /app
-    backend = map (ip: "${ip}:8080") (services.getVpnIpsByTag tag);
-    blockPaths = [ "/metrics" ];                 # optional 403 paths
-    sslCertificate = "custom-cert";              # optional: override ACME cert name
-  };
-})
-```
-
-**Method B — Domain + path (legacy)** : si vous ne passez pas par une URL
-configurée.
-
-```nix
-  infra.ingress."myapp" = {
-    domain = "exemple.com";                      # domaine seul
-    path = "/app";                               # optionnel, null → /
-    backend = map (ip: "${ip}:8080") (services.getVpnIpsByTag tag);
-  };
-```
-
-**Multi-domaine par chemins** : plusieurs entrées peuvent partager le même
-domaine en spécifiant des chemins différents. Le module nginx les fusionne
-en un seul virtualHost avec plusieurs locations.
-
-```nix
-infra.ingress."app-a" = { url = "https://apps.exemple.com/app-a"; backend = ["10.100.0.1:9004"]; };
-infra.ingress."app-b" = { url = "https://apps.exemple.com/app-b"; backend = ["10.100.0.2:8000"]; };
-# → 1 seul virtualHost "apps.exemple.com"
-#   location /app-a → upstream app-a
-#   location /app-b → upstream app-b
-```
-
-| Field           | Type          | Description                                          |
-|-----------------|---------------|------------------------------------------------------|
-| `url`           | `nullOr str`  | URL complète. Prioritaire sur `domain`+`path`.       |
-| `domain`        | `nullOr str`  | Domaine (ex: `exemple.com`). Ignoré si `url` défini. |
-| `path`          | `nullOr str`  | Chemin (ex: `/app`). `null` = racine `/`.            |
-| `backend`       | `[str]`       | Liste d'IP:port des backends.                        |
-| `blockPaths`    | `[str]`       | Chemins à bloquer (403). Préfixés par le `path`.     |
-| `sslCertificate`| `nullOr str`  | Override du nom du certificat ACME (défaut: domaine).|
-
-The guard condition ensures ingress is only created when:
-- A public URL is configured (`cfg.url != null`)
-- At least one backend exists (`getVpnIpsByTag != []`)
-
-Nginx groups ingress entries by effective domain, creates one `upstream`
-per entry (load-balanced to all backends), and one `virtualHost` per domain
-with a `location` block at each entry's path (or `/`). ACME domains are
-auto-registered and deduplicated.
-
-### 7.4 Telemetry / Prometheus (`infra.telemetry`)
-
-Register scrape targets for Prometheus:
-
-```nix
-{
-  infra.telemetry."myapp" = map (host: {
-    targets = [ "${host}:8080/metrics" ];
-    labels = {
-      job = "myapp";
-      host = host;      # optional, for per-host dashboards
-    };
-  }) (services.getHostsByTag tag);
-}
-```
-
-This block has **no `mkIf` wrapper** — it runs on every node. When no node
-has the tag, `getHostsByTag` returns `[]` and the resulting list is empty.
-The Prometheus module reads `config.infra.telemetry` globally and generates
-its scrape config from the aggregate.
-
-Optional fields for HTTPS targets (e.g. self-signed cert, domain mismatch
-on VPN IP — Kanidm is the primary example):
-
-```nix
-{
-  infra.telemetry."myapp" = map (host: {
-    targets = [ "${host}:8443" ];
-    # ...
-    scheme = "https";                              # default: "http"
-    tls_config = {
-      insecure_skip_verify = true;                  # default: false
-    };
-  }) (services.getHostsByTag tag);
-}
-```
-
-| Field | Type | Default |
-|---|---|---|
-| `scheme` | `"http"` or `"https"` | `"http"` |
-| `tls_config` | `null` or `{ insecure_skip_verify = bool; }` | `null` |
-
-### 7.5 Dashboards / Grafana (`infra.grafana.dashboards`)
-
-Register a JSON dashboard file for auto-provisioning in Grafana:
-
-```nix
-# Register unconditionally, guarded on GLOBAL tag presence
-# (any node having the tag, not just current node)
-(lib.mkIf (services.getHostsByTag tag != [ ]) {
-  infra.grafana.dashboards = [ ./dashboards/myapp.json ];
-})
-```
-
-The guard `services.getHostsByTag tag != [ ]` is global — true if ANY node has
-the tag. This ensures the dashboard is registered even when Grafana runs on a
-different node than the service itself.
-
-Store dashboard JSON files in `nixos/modules/<category>/dashboards/`. They are
-aggregated via `pkgs.linkFarm` on the Grafana node and provisioned with folder
-structure preserved.
-
-### 7.6 Grafana datasource auto-discovery
-
-If your module provides data that Prometheus scrapes, it doesn't need to
-register with Grafana — the Grafana module auto-discovers Prometheus
-instances via `services.getVpnIpsByTag "prometheus"`. However, if you need
-a non-Prometheus datasource, you can push to:
-
-```nix
-services.grafana.provision.datasources.settings.datasources = [ ... ];
-```
-
-This is the same mechanism used by the Prometheus module to self-register.
-
-### 7.7 ACME Certificates (`infra.acme.domains`)
-
-The ACME module provides TLS certificates across all nodes via an
-**issuer/syncer** model:
-
-- **Issuer** (tag `acme-issuer`): runs Let's Encrypt DNS challenge, stores certs
-  in `/var/lib/acme/`. Exposes them via `rrsync` (SSH) to other nodes.
-- **Syncer** (all other nodes): pulls certs from the issuer via
-  `rsync` (systemd `sync-cert@`). Falls back to self-signed `minica` certs if
-  the issuer is unreachable — services can start even before the first sync.
-
-#### Domain options
-
-```nix
-# private repo — a typical domain entry:
-infra.acme.domains = [
-  {
-    domain = "registry.example.com";
-    services = [ "nginx" "docker-registry" ];   # ← key field for modules
-    postRun = "echo cert updated";
-  }
-  {
-    domain = "*.apps.example.com";
-    services = [ "nginx" ];
-  }
-];
-```
-
-| Field         | Type          | Description                                                    |
-|---------------|---------------|----------------------------------------------------------------|
-| `domain`      | `str`         | Domain name (supports `*.` wildcards).                         |
-| `services`    | `nullOr [str]`| Systemd services that depend on this cert. **MUST be the name of a systemd unit** (e.g. `"nginx"`, `"docker-registry"`). |
-| `dnsProvider` | `nullOr str`  | Override the global DNS provider for this domain.              |
-| `credentialsFile` | `nullOr str` | Override DNS credentials file for this domain.                 |
-| `postRun`     | `nullOr str`  | Shell script executed after cert sync/renewal.                 |
-
-#### How services declare cert dependencies
-
-A module that serves TLS (e.g. nginx) does **not** hardcode its cert
-dependency. Instead, the private repo lists the service in `services` for
-each domain:
-
-```nix
-# Private repo — nginx needs certs for these domains:
-infra.acme.domains = [
-  { domain = "example.com";    services = ["nginx"]; }
-  { domain = "*.example.com";  services = ["nginx"]; }
-];
-```
-
-The ACME module automatically generates `systemd.services.<svc>.wants` and
-`systemd.services.<svc>.after` to ensure the service waits for the cert:
-
-- On the **issuer** node: depends on `acme-<domain>.service`
-- On **syncer** nodes: depends on `sync-cert@<domain>.service`
-
-If a service is listed in multiple domains, the dependency lists accumulate.
-
-A module that needs TLS should **document in its header** that users must
-list it in the corresponding `services` field:
-
-```nix
-# -------------------------------------------------------------------------
-# nginx.nix — Reverse proxy Nginx + VTS
-#
-# Configuration privée requise :
-#   - Dans chaque entrée infra.acme.domains dont le domaine est
-#     utilisé par un ingress, lister "nginx" dans services.
-# -------------------------------------------------------------------------
-```
-
-The nginx module auto-registers its domains via `infra.acme.domains`
-(through `infra.ingress` → `infra.acme.domains` deduction; the nginx module
-itself pushes domain names to `infra.acme.domains` — but `services` is set
-in the private repo, not by the module). This separation ensures the module
-stays generic while the private repo owns the topology.
-
----
-
-## 7b. Cross-Node Side Effects — Global vs Per-Node Guards
-
-### The fundamental concept
-
-NixOS modules are **evaluated once per node**, but **all options are global**.
-`config.infra.*` holds the same value regardless of which node's evaluation
-you're in. This means a module evaluated on vps1 can populate options that
-only vps2 reads:
-
-```
-Module "nginx.nix" on vps1    →  populates infra.telemetry."nginx"
-Module "nginx.nix" on vps2    →  populates infra.telemetry."nginx"
-                               ↓  (both merged into one list)
-Module "prometheus.nix" on vps3 → reads infra.telemetry (sees both)
-```
-
-### Two types of guards
-
-Because some options produce **side effects for other nodes**, there are two
-fundamentally different conditional patterns:
-
-| Guard                              | Meaning                                      | When to use                                     |
-|------------------------------------|----------------------------------------------|-------------------------------------------------|
-| `lib.mkIf (services.hasTag tag)`   | True only if THIS node has the tag           | Service activation, deployment, local config     |
-| No guard / `services.getHostsByTag tag != []` | True if ANY node has the tag | Telemetry, dashboards, anything another node consumes |
-
-### Per-node guard: local service activation
-
-Use `services.hasTag tag` (or `enabled`) for anything that only affects
-the CURRENT node:
-
-```nix
-(lib.mkIf enabled {
-  services.myapp = { ... };           # deploy on this node only
-  infra.backup.paths = [ "/var/lib/myapp" ];   # backup this node's data
-  infra.security.acls = [ { ... } ];           # firewall on this node
-})
-```
-
-### Global guard (or none): side effects for other nodes
-
-For options that **other nodes consume**, use either no guard or the global
-guard `services.getHostsByTag tag != []`:
-
-```nix
-# No guard — always runs. If tag isn't on any node, getHostsByTag returns [].
-{
-  infra.telemetry."myapp" = map (host: {
-    targets = [ "${host}:8080/metrics" ];
-  }) (services.getHostsByTag tag);
-}
-
-# Global guard — only registers if at least one node has the tag.
-# This prevents registering dashboards for services that aren't deployed.
-(lib.mkIf (services.getHostsByTag tag != [ ]) {
-  infra.grafana.dashboards = [ ./dashboards/myapp.json ];
-})
-```
-
-### Why telemetry is always unconditional
-
-Telemetry uses no guard. The reason: `services.getHostsByTag` returns `[]`
-when no node has the tag, so `map` produces an empty list. The Prometheus
-module sees an empty scrape config — it's harmless. The `mkIf` buys nothing
-and adds complexity.
-
-### Why ingress uses a two-part guard
-
-Ingress uses the current node's tag AND configuration:
-
-```nix
-(lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) { ... })
-```
-
-This is correct because:
-- `cfg.url != null` — the URL must be configured in the private repo
-- `services.getVpnIpsByTag tag != []` — at least one backend must exist
-
-These are both global conditions (url comes from private config, which is
-shared across all nodes; getVpnIpsByTag returns all nodes with the tag).
-
-### Summary: which guard for which option
-
-| Option                   | Guard                                            | Rationale                                   |
-|--------------------------|--------------------------------------------------|---------------------------------------------|
-| `infra.registeredTags`   | None (always)                                    | Tag must be known even if unused            |
-| Service activation       | `lib.mkIf enabled`                               | Only deploy on nodes with the tag           |
-| `infra.backup.paths`     | `lib.mkIf enabled`                               | Only backup nodes with running services     |
-| `infra.security.acls`    | `lib.mkIf enabled`                               | Only open ports on nodes running services   |
-| `infra.ingress`          | `lib.mkIf (cfg.url != null && getVpnIpsByTag != [])` | Needs URL + at least one backend       |
-| `infra.telemetry`        | None (always)                                    | Harmless empty list when no nodes tagged    |
-| `infra.grafana.dashboards` | `lib.mkIf (getHostsByTag != [])`               | Don't provision unused dashboards           |
-| `deployment.keys`        | `lib.mkIf enabled`                               | Only deploy secrets to nodes needing them   |
-
-### The golden rule
-
-**Ask yourself: who reads this option?** If the answer is "another node" or
-"another module that may run on a different node", you probably need a global
-guard (or no guard at all). If the answer is "only this node's services",
-use the per-node `enabled` guard.
-
----
-
-## 8. Secrets
-
-Deployment keys keep secret values out of the built NixOS configuration, but
-the source of a private Flake is still copied to the local Nix store. Until the
-private repository uses encrypted source files, keep it private and restrict
-access to the build machine. At deployment time, secrets are uploaded through
-Colmena's `deployment.keys` mechanism.
-
-### 8.1 Declaring secret options
-
-In your module's `options`, declare sensitive fields as `nullOr str`:
-
-```nix
-options.infra.myapp = {
-  password = lib.mkOption {
-    type = lib.types.nullOr lib.types.str;
-    default = null;
-    description = ''Mot de passe admin (secret — déployé via Colmena).'';
-  };
-  apiKey = lib.mkOption {
-    type = lib.types.nullOr lib.types.str;
-    default = null;
-    description = ''Clé API (secret — déployé via Colmena).'';
-  };
-};
-```
-
-### 8.2 Deploying secrets with `ops.mkSecretKeys`
-
-```nix
-deployment.keys = ops.mkSecretKeys "myapp" config.infra.myapp [ "password" "apiKey" ];
-```
-
-This generates:
-- `/var/lib/secrets/myapp/password` (mode 0400)
-- `/var/lib/secrets/myapp/apiKey` (mode 0400)
-
-The files are uploaded by Colmena **over SSH at deploy time**. This keeps them
-out of the built system, but not out of the local store copy of a plaintext
-private Flake.
-
-| Parameter     | Description                                             |
-|---------------|---------------------------------------------------------|
-| `"myapp"`     | Subdirectory under `/var/lib/secrets/`                  |
-| `config.infra.myapp` | Attrset of options (contains both secrets and non-secrets) |
-| `[...]`       | List of **keys to deploy** (only these fields)             |
-| `null`        | Instead of a list: deploy ALL fields from the attrset      |
-
-For encrypted repositories, prefer the corresponding runtime path option when
-the module provides one (`passwordFile`, `accountsFile`, `envFile`, etc.):
-
-```nix
-# Optional runtime override; SOPS is the module's default
-infra.myapp.passwordFile = "/run/secrets/myapp/password";
-```
-
-The plaintext value and its `*File` alternative are mutually exclusive. When
-neither is set, the owning service module uses its standard SOPS declaration.
-This keeps a runtime injection point for tests or another secret provider.
-
-The private `config/<app>/<app>.nix` file must not contain this plumbing. It is
-reserved for readable functional choices such as `infra.myapp.url`. The
-public service module owns its standard SOPS declarations and `*File` paths; a
-private module owns only its project-specific secret wiring. The template checks
-this boundary automatically.
-
-Rclone follows the same compatibility rule with `configContent` (legacy) and
-`configFile` (runtime secret path). This only changes secret delivery; token
-refresh behavior remains unchanged.
-
-### 8.3 Consuming secrets in the service
-
-**Method A** — Systemd `LoadCredential` (recommended for single-file secrets):
-
-```nix
-systemd.services.myapp.serviceConfig.LoadCredential = [
-  "password:/var/lib/secrets/myapp/password"
-  "apiKey:/var/lib/secrets/myapp/apiKey"
-];
-```
-
-The service reads them from `/run/credentials/myapp.service/password` and
-`/run/credentials/myapp.service/apiKey`. These are bind-mounted into the
-service namespace by systemd — the service sees them, nobody else does.
-
-**Method B** — Direct file path (for apps that need multiple files or env):
-
-```nix
-systemd.services.myapp.serviceConfig = {
-  EnvironmentFile = "/var/lib/secrets/myapp/env";
-  ExecStart = "${pkgs.myapp}/bin/myapp --password-file /var/lib/secrets/myapp/password";
-};
-```
-
-This is the Restic pattern: all three fields (repository, password, env) are
-deployed with `filterList = null` and read from paths.
-
-### 8.4 Non-secret options in the same attrset
-
-You can declare non-secret options (like `url`, `port`) in the same
-`options.infra.myapp` attrset. `mkSecretKeys` only deploys the fields you
-specify in the filter list. Non-secret fields are ignored and can be freely
-read from `config.infra.myapp`:
-
-```nix
-options.infra.myapp = {
-  url = lib.mkOption { ... };           # non-secret: read from config
-  password = lib.mkOption { ... };      # secret: deployed via mkSecretKeys
-  port = lib.mkOption { ... };          # non-secret
-};
-```
-
----
-
-## 9. Conditional Logic Patterns
-
-### 9.1 Enabling based on tag (primary guard)
-
-```nix
-let enabled = services.hasTag tag;
-in (lib.mkIf enabled { ... })
-```
-
-Everything related to the service (deployment, acls, backup paths) goes inside
-this block.
-
-### 9.2 Conditional ingress (only when public)
-
-```nix
-(lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
-  infra.ingress."app" = { ... };
-})
-```
-
-### 9.3 Conditional on multiple tags
-
-```nix
-(lib.mkIf (enabled && services.hasTag "node-metrics") {
-  systemd.services.restic-stats = { ... };
-})
-```
-
-### 9.4 Conditional on group existence
-
-```nix
-(lib.mkIf (enabled && builtins.hasAttr "cert-syncer" config.users.groups) {
-  users.users.nginx.extraGroups = [ "cert-syncer" ];
-})
-```
-
----
-
-## 10. Complete Example: Minimal HTTP Application
-
-This is the absolute minimum for an application that serves HTTP on the VPN
-and wants public access + Prometheus monitoring.
-
-```nix
-# -------------------------------------------------------------------------
-# myapp.nix — MyApp service
-#
-# Tags requis : `applications/myapp`
-# Secrets     : `infra.myapp.password` (déployé via Colmena)
-# -------------------------------------------------------------------------
-{
-  config,
-  lib,
-  services,
-  ops,
-  ...
-}:
-
-let
-  tag = "applications/myapp";
-  enabled = services.hasTag tag;
-  cfg = config.infra.myapp;
+  useSopsPassword =
+    enabled && cfg.password == null && cfg.passwordFile == null;
+  passwordPath =
+    if cfg.passwordFile != null then cfg.passwordFile
+    else if cfg.password != null then "/var/lib/secrets/myapp/password"
+    else "/run/secrets/myapp/password";
 in
 {
   options.infra.myapp = {
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "URL publique.";
+      description = "URL publique de MyApp.";
     };
+
     password = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "Mot de passe admin (secret).";
+      description = "Compatibilité : mot de passe injecté par Colmena.";
+    };
+
+    passwordFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Compatibilité : chemin runtime du mot de passe.";
     };
   };
 
   config = lib.mkMerge [
     { infra.registeredTags = [ tag ]; }
 
+    (lib.mkIf useSopsPassword {
+      sops.secrets."myapp/password" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/myapp.json";
+        key = "password";
+      };
+    })
+
     (lib.mkIf enabled {
-      deployment.keys = ops.mkSecretKeys "myapp" cfg [ "password" ];
+      assertions = [{
+        assertion = cfg.password == null || cfg.passwordFile == null;
+        message = "Set at most one MyApp password source.";
+      }];
+
+      deployment.keys = ops.mkSecretKeys "myapp" {
+        password = if cfg.passwordFile == null then cfg.password else null;
+      } [ "password" ];
 
       systemd.services.myapp.serviceConfig.LoadCredential = [
-        "password:/var/lib/secrets/myapp/password"
+        "password:${passwordPath}"
       ];
 
       services.myapp = {
         enable = true;
         listenAddress = services.getVpnIp;
-        port = 8080;
-        adminPasswordFile = "/run/credentials/myapp.service/password";
+        inherit port;
       };
 
-      infra.backup.paths = [ "/var/lib/myapp" ];
-      infra.security.acls = [
-        { port = 8080; allowedTags = [ "web-server" ]; description = "MyApp"; }
-      ];
-    })
+      infra.security.acls = [{
+        inherit port;
+        allowedTags = [ "web-server" ];
+        description = "MyApp";
+      }];
 
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
-      infra.ingress."myapp" = {
-        url = cfg.url;
-        backend = map (ip: "${ip}:8080") (services.getVpnIpsByTag tag);
-      };
+      infra.backup.paths = [ dataDir ];
     })
 
     {
-      infra.telemetry."myapp" = map (host: {
-        targets = [ "${host}:8080/metrics" ];
-        labels = { host = host; };
+      infra.telemetry.myapp = map (host: {
+        targets = [ "${host}:9091" ];
+        labels = { inherit host; };
       }) (services.getHostsByTag tag);
     }
+
+    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
+      infra.ingress.myapp = {
+        url = cfg.url;
+        backend = map (ip: "${ip}:${toString port}")
+          (services.getVpnIpsByTag tag);
+      };
+    })
 
     (lib.mkIf (services.getHostsByTag tag != [ ]) {
       infra.grafana.dashboards = [ ./dashboards/myapp.json ];
@@ -850,205 +210,317 @@ in
 }
 ```
 
-## 11. Private Repo Configuration
+Le module est lisible de haut en bas : contrat, secrets, configuration locale,
+puis contributions globales.
 
-Options declared by modules are set in the private repo (never in the public
-infra repo). The private flake imports these values into the Colmena evaluation:
+## 4. Réseau et exposition
+
+### 4.1 VPN d'abord
+
+Un service interne écoute sur `services.getVpnIp`. N'utilisez `0.0.0.0` que si
+le logiciel ne permet pas mieux et protégez alors explicitement le port. Seul
+le nœud `web-server` expose normalement HTTP/HTTPS à Internet.
+
+Le chemin standard est :
+
+```text
+Internet -> Nginx public -> backend sur WireGuard -> application
+```
+
+### 4.2 ACL
+
+Le module qui ouvre un port déclare aussi qui peut l'atteindre :
 
 ```nix
-# private repo: inventory/config.nix
+infra.security.acls = [{
+  port = 8080;
+  proto = "tcp";                 # défaut
+  allowedTags = [ "web-server" ];
+  allowedIps = [ ];              # exception manuelle seulement
+  trustLocalRoot = true;         # défaut
+  description = "MyApp HTTP";
+}];
+```
+
+Les tags sont résolus en IP VPN. Le pare-feu accepte les sources indiquées puis
+rejette explicitement les autres connexions sur ce port. Ajoutez aussi l'ACL du
+port de métriques pour le tag `prometheus`.
+
+### 4.3 Ingress
+
+Une application publique contribue à `infra.ingress` :
+
+```nix
+infra.ingress.myapp = {
+  url = cfg.url;                 # ex. https://app.example.com/path
+  backend = [ "10.100.0.2:8080" ];
+  blockPaths = [ "/metrics" ];
+  backendTls = false;
+  sslCertificate = null;
+};
+```
+
+`url` est prioritaire sur `domain` + `path`. Nginx agrège les entrées par
+domaine, répartit les backends et associe les certificats ACME. Ne configurez
+pas directement le virtual host Nginx depuis le dépôt privé pour une
+application standard.
+
+### 4.4 ACME
+
+Le module `acme.nix` possède l'émission et la synchronisation des certificats.
+Un module consommateur ne manipule pas les credentials DNS. Il déclare un
+ingress ; Nginx contribue les domaines requis et recharge les certificats.
+
+Si un service non-Nginx consomme directement un certificat, ajoutez une entrée
+`infra.acme.domains` avec son nom de service et son éventuel `postRun` dans le
+module responsable.
+
+## 5. Secrets SOPS
+
+SOPS n'est pas optionnel dans une nouvelle infrastructure. Le module public
+principal importe `sops-nix`, et le dépôt privé configure une seule racine :
+
+```nix
+infra.sops.secretsDirectory = ./secrets;
+```
+
+Le module du service déclare ensuite le fichier, la clé JSON et les permissions
+runtime :
+
+```nix
+sops.secrets."myapp/api-key" = {
+  sopsFile = config.infra.sops.secretsDirectory + "/myapp.json";
+  key = "api_key";
+  owner = "myapp";
+  group = "myapp";
+  mode = "0400";
+};
+```
+
+Le dépôt privé contient uniquement :
+
+```json
+{"api_key":"valeur-chiffree-par-sops"}
+```
+
+Règles obligatoires :
+
+- le câblage SOPS reste dans le module qui consomme le secret ;
+- `config/` ne contient ni `sops.secrets`, ni chemin `/run/secrets`, ni valeur
+  secrète ;
+- aucun fichier clair n'est créé dans le dépôt ; utilisez `sops fichier.json` ;
+- ne lisez jamais une valeur secrète avec `builtins.readFile` ;
+- préférez `systemd` `LoadCredential` quand le service l'accepte ;
+- renseignez `owner`, `group` et `mode` seulement selon le besoin réel ;
+- n'ajoutez une option `password` ou `passwordFile` que pour une compatibilité
+  existante ou un besoin de test concret.
+
+`builtins.readFile` reste acceptable pour une **clé publique**, par exemple la
+clé publique du cert-syncer.
+
+Quand le service est utilisé sur plusieurs rôles, déclarez le secret sur chaque
+nœud qui le consomme. Grafana en est l'exemple : le secret OIDC est nécessaire
+sur le nœud Grafana et sur le nœud Kanidm qui provisionne le client.
+
+## 6. Intégrations appartenant au module
+
+### 6.1 Sauvegarde
+
+Le module applicatif publie ses données persistantes :
+
+```nix
+infra.backup.paths = [ "/var/lib/myapp" ];
+```
+
+Ne sauvegardez pas les caches reproductibles. Vérifiez que le service écrit
+réellement dans ce chemin, qu'une restauration est possible et si une pause ou
+un dump cohérent est requis. Le module Restic agrège ensuite tous les chemins
+sur les nœuds portant le tag `backup`.
+
+### 6.2 Prometheus
+
+Un module publie un job global :
+
+```nix
+infra.telemetry.myapp = map (host: {
+  targets = [ "${host}:9091" ];
+  labels = { inherit host; };
+  scheme = "http";
+  tls_config = null;
+  basic_auth = null;
+}) (services.getHostsByTag tag);
+```
+
+Les noms d'hôtes WireGuard sont utilisables dans les cibles. Protégez le port
+avec une ACL autorisant `prometheus`. N'utilisez `basic_auth` que si le service
+l'impose : cette option contient actuellement son mot de passe dans
+l'évaluation Nix et ne convient pas à un nouveau secret sensible.
+
+### 6.3 Grafana
+
+Le dashboard JSON vit à côté du module :
+
+```nix
+lib.mkIf (services.getHostsByTag tag != [ ]) {
+  infra.grafana.dashboards = [ ./dashboards/myapp.json ];
+}
+```
+
+Le dashboard doit cibler le nom du job Prometheus stable, éviter les UID de
+datasource propres à un environnement et rester utile sans modification
+manuelle après déploiement.
+
+### 6.4 SSO/Kanidm
+
+Une application compatible OIDC enregistre elle-même son client :
+
+```nix
+infra.sso.myapp = {
+  displayName = "MyApp";
+  serviceTag = tag;
+  redirectUris = [ "${cfg.url}/oauth/callback" ];
+  landingUrl = cfg.url;
+  secretFile = "/run/secrets/sso/myapp-client-secret";
+  scopes = [ "openid" "profile" "email" ];
+  pkce = true;
+  groups.admins.claims.myapp_role = [ "Admin" ];
+};
+```
+
+Le même module déclare le secret OIDC SOPS et configure son application pour
+lire ce fichier. Kanidm agrège `infra.sso`, mais les comptes et appartenances
+aux groupes restent administrés dans Kanidm. Voir
+[`KANIDM-CLI.md`](KANIDM-CLI.md).
+
+Avant d'ajouter un proxy d'authentification, vérifiez si l'application possède
+un support OIDC natif. Le module reste responsable de l'intégration retenue.
+
+## 7. Options privées et paquets
+
+Le dépôt privé ne devrait définir que des choix compréhensibles sans connaître
+SOPS ou systemd :
+
+```nix
 {
   infra.myapp = {
-    url = "https://myapp.example.com";
-    password = "changeme";
+    url = "https://app.example.com";
+    registrationEnabled = false;
   };
 }
 ```
 
-Secrets (password, api keys, etc.) are automatically deployed via Colmena's
-`deployment.keys` when passed through `ops.mkSecretKeys` (see §8).
-```
+Pour un binaire non présent dans nixpkgs, ajoutez un paquet sous
+`nixos/pkgs/<app>/` ou dans le dépôt privé, puis injectez-le par une option de
+type `package`. Un binaire précompilé suit le modèle `fetchurl` +
+`autoPatchelfHook` + `dontUnpack = true`. N'ajoutez pas un overlay si un simple
+`pkgs.callPackage` suffit.
 
----
+## 8. Modules sans tag
 
-## 12. Summary Checklist
+Un tag n'est pas une obligation technique. `rclone-sync.nix` active chaque
+montage selon `targetNodes` :
 
-For every new module:
-
-- [ ] Create file in correct `nixos/modules/<category>/<name>.nix`
-- [ ] Add to `<category>/default.nix` imports list
-- [ ] Destructure `{ config, lib, pkgs, services, ops, ... }`
-- [ ] Define `let tag = "..."` and `enabled = services.hasTag tag`
-- [ ] Declare `options.infra.<name>` with at least a `url` field (nullOr str)
-- [ ] `infra.registeredTags = [ tag ]` (in config)
-- [ ] Service config inside `lib.mkIf enabled`
-- [ ] Bind to `services.getVpnIp` (never `0.0.0.0`)
-- [ ] `infra.security.acls` for every port
-- [ ] `infra.backup.paths` for data directories
-- [ ] `infra.ingress."<name>"` conditional on url + backends (use `url` field, not `domain` + `replaceStrings`)
-- [ ] `infra.telemetry."<name>"` if the service exposes Prometheus metrics
-- [ ] `infra.grafana.dashboards` if a Grafana dashboard exists (global guard: `mkIf (services.getHostsByTag tag != [ ])`)
-- [ ] Secrets via `ops.mkSecretKeys` (never plain imports)
-- [ ] Comment header describing purpose, tags, secrets
-- [ ] Verify: `nix flake check --all-systems`
-
----
-
-## 13. Exception Module: RcloneSync (No Tag, Per-Node Mounts)
-
-`nixos/modules/network/rclone-sync.nix` is the **only module that does not use
-tags**. Instead, it auto-activates based on a `targetNodes` list in each mount
-entry. If no mount targets the current node, the module does nothing.
-
-### Why no tag?
-
-Tags enforce a global config shared by all tagged nodes. But rclone mounts are
-inherently per-node: `vps1` mounts an S3 bucket, `vps2` mounts an SFTP server.
-Using a tag would force all tagged nodes to have the same mounts, which defeats
-the purpose.
-
-### Architecture
-
-```
-infra.rcloneSync.mounts = {
-  "backup-s3" = {
-    mountPoint = "/mnt/backup";
-    targetNodes = ["vps1" "vps2"];     # ← key field
-    remoteName = "s3-crypt";
-    configContent = "...";              # secret (Colmena)
-    # ...
-  };
-  "media-sftp" = {
-    mountPoint = "/mnt/media";
-    targetNodes = ["vps1"];            # vps1 only
-    # ...
-  };
+```nix
+infra.rcloneSync.mounts."backup-s3" = {
+  mountPoint = "/mnt/backup";
+  targetNodes = [ "vps1" ];
+  remoteName = "s3-crypt";
 };
 ```
 
-Each mount entry declares which nodes should receive it via `targetNodes`.
-The module, when evaluated on node N, filters to mounts where `targetNodes`
-contains N, then configures only those.
+Le module dérive les montages du nœud courant, déclare pour chacun la clé SOPS
+dans `secrets/rclone-sync.json`, puis amorce une copie persistante et inscriptible
+de `rclone.conf`. Cette exception est justifiée par la granularité naturelle
+« montage -> nœuds », pas par une architecture différente.
 
-### How activation works
+## 9. Vérification
 
-```nix
-let
-  cfg = config.infra.rcloneSync;
-  nodeName = config.infra.nodeName;
-  mountedHere = lib.filterAttrs (_: m: builtins.elem nodeName m.targetNodes) cfg.mounts;
-  hasMounts = mountedHere != {};
-in
-{
-  config = lib.mkIf hasMounts { ... };
-}
-```
+Avant de considérer le module terminé :
 
-No `services.hasTag`, no `infra.registeredTags`. Just `targetNodes` filtering.
+1. ajoutez-le au `default.nix` de sa catégorie ;
+2. ajoutez un nœud synthétique ou étendez un check existant dans `flake.nix` ;
+3. évaluez le chemin SOPS par défaut, pas uniquement les fallbacks texte ;
+4. vérifiez le cas sans tag et le cas avec URL absente ;
+5. lancez :
 
-### Module self-registration
+   ```sh
+   nix flake check --all-systems
+   ```
 
-The RcloneSync module does **not** self-register to other services:
+6. dans une infrastructure privée, lancez `check-project` ;
+7. pour un changement risqué, faites d'abord `deploy-project <canari>`, vérifiez
+   les unités et les endpoints, puis déployez la flotte.
 
-| Registration | Reason |
-|---|---|
-| `infra.registeredTags` | No tag to register |
-| `infra.security.acls` | No network ports (mounts are local filesystem) |
-| `infra.backup.paths` | Mounted data lives on the remote, not backed up locally |
-| `infra.ingress` | No HTTP endpoint |
-| `infra.telemetry` | No Prometheus metrics endpoint |
+Une évaluation Nix réussie ne prouve ni la connectivité réseau, ni la validité
+d'un credential fournisseur, ni la santé d'un service après activation.
 
-### Mount generation
+## 10. Checklist complète
 
-Mounts are generated as **systemd mount units** (not services). Each mount uses
-`type = "rclone"`, which delegates to `mount.rclone`. The `args2env` option
-converts all `key=value` mount options into `RCLONE_KEY=value` environment
-variables (rclone's preferred config method).
+### Responsabilité
 
-```nix
-# What the module generates (conceptual, not actual Nix code):
-systemd.mounts."mnt-backup.mount" = {
-  what = "s3-crypt:backups";           # remoteName:remotePath
-  where = "/mnt/backup";
-  type = "rclone";
-  options = "nodev,nofail,args2env,allow_other,config=/var/lib/...,vfs-cache-mode=writes,...";
-  wantedBy = ["remote-fs.target"];
-  wants = ["network-online.target"];
-};
-```
+- [ ] Le service mérite un module distinct.
+- [ ] Toutes ses intégrations vivent dans ce même module.
+- [ ] Le dépôt privé ne reçoit que des choix fonctionnels.
+- [ ] Aucun adaptateur SOPS séparé n'est ajouté.
 
-### Performance defaults
+### Activation et topologie
 
-The module ships with aggressive performance defaults suitable for most use-cases:
+- [ ] Le tag est nommé et enregistré, ou l'activation sans tag est justifiée.
+- [ ] Le bloc local utilise `services.hasTag` ou les cibles du nœud courant.
+- [ ] Les contributions inter-nœuds utilisent une garde globale.
+- [ ] Les erreurs de configuration importantes ont une assertion lisible.
 
-| Option | Default | Description |
-|---|---|---|
-| `vfsCacheMode` | `"writes"` | Cache VFS mode (off/minimal/writes/full) |
-| `cacheDir` | `"/var/cache/rclone"` | Cache directory (null = rclone default) |
-| `vfsCacheMaxSize` | `"5G"` | Max cache size |
-| `vfsCacheMaxAge` | `"1h"` | Max cache entry age |
-| `bufferSize` | `"16M"` | Read buffer size |
-| `readAhead` | `"128M"` | Sequential read-ahead buffer |
+### Réseau
+
+- [ ] Le service écoute sur l'IP VPN si possible.
+- [ ] Chaque port a une ACL et seulement les rôles nécessaires sont autorisés.
+- [ ] Le port de métriques est limité à `prometheus`.
+- [ ] L'ingress utilise les IP VPN et n'expose pas `/metrics` ou une route admin
+      inutilement.
+- [ ] Les ports, protocoles et besoins IPv6 sont explicites.
 
 ### Secrets
 
-Each mount's `configContent` is deployed as a separate secret file:
+- [ ] Chaque secret possède une déclaration SOPS dans le module.
+- [ ] Le fichier JSON, la clé, le propriétaire et le mode sont exacts.
+- [ ] Le service lit le secret au runtime, idéalement avec `LoadCredential`.
+- [ ] Aucun secret n'entre dans `/nix/store`, les logs ou `config/`.
+- [ ] Les fichiers et champs attendus sont connus par `init-project` si le
+      module est public et standard.
+- [ ] La rotation et le redémarrage nécessaire sont compris.
 
-```
-/var/lib/secrets/rclone-sync/
-├── backup-s3/
-│   └── rclone.conf       ← configContent for "backup-s3"
-└── media-sftp/
-    └── rclone.conf       ← configContent for "media-sftp"
-```
+### Données et exploitation
 
-The `config=/var/lib/secrets/rclone-sync/<name>/rclone.conf` mount option points
-the mount unit to the right secret file. Values never enter `/nix/store`.
+- [ ] Les chemins persistants utiles contribuent à `infra.backup.paths`.
+- [ ] La cohérence d'une restauration a été pensée.
+- [ ] Les logs systemd permettent un diagnostic sans exposer de secret.
+- [ ] Les mises à jour et migrations de schéma sont anticipées.
+- [ ] Les ressources, permissions utilisateur et répertoires d'état sont
+      minimaux.
 
-### Crypt layer
+### Observabilité
 
-rclone's built-in `crypt` remote is supported without any special module code.
-Just define two remotes in `configContent`:
+- [ ] Une cible `infra.telemetry` est publiée si des métriques existent.
+- [ ] Les labels et le nom de job sont stables.
+- [ ] Un dashboard utile est colocalisé et enregistré globalement.
+- [ ] Les alertes réellement actionnables sont prévues au bon endroit.
 
-```
-[s3-backend]
-type = s3
-provider = AWS
-env_auth = true
+### SSO et accès
 
-[s3-crypt]
-type = crypt
-remote = s3-backend:my-bucket
-password = ...
-```
+- [ ] Le support OIDC natif a été évalué avant tout proxy.
+- [ ] Le client, ses redirect URI, scopes, PKCE, groupes et claims sont
+      déclarés par l'application.
+- [ ] L'application et Kanidm voient le même secret client au runtime.
+- [ ] Le comportement sans Kanidm est explicite.
 
-Set `remoteName = "s3-crypt"` in the mount config. The module doesn't care how
-many remotes are defined — it just mounts the one referenced by `remoteName`.
+### Validation
 
-### Typical config (private repo)
+- [ ] Le module est importé et couvert par une évaluation synthétique.
+- [ ] `nix flake check --all-systems` réussit.
+- [ ] `check-project` réussit dans le dépôt privé.
+- [ ] Un déploiement canari vérifie service, ACL, ingress, métriques, dashboard,
+      backup et SSO selon ce qui s'applique.
 
-```nix
-# config/rclone-sync/rclone-sync.nix
-{
-  infra.rcloneSync.mounts = {
-    "backup-s3" = {
-      mountPoint = "/mnt/backup";
-      targetNodes = ["vps1" "vps2"];
-      remoteName = "s3-crypt";
-      remotePath = "backups";
-      configContent = ''
-        [s3-backend]
-        type = s3
-        provider = AWS
-        env_auth = true
-        region = us-east-1
-        [s3-crypt]
-        type = crypt
-        remote = s3-backend:mon-bucket
-        password = CHANGEME
-        password2 = CHANGEME
-      '';
-    };
-  };
-}
-```
+Si une case ne s'applique pas, elle doit pouvoir être écartée en une phrase.
+Cette checklist sert à révéler les responsabilités oubliées, pas à fabriquer du
+code vide.

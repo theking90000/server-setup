@@ -1,251 +1,183 @@
 # Server Setup
 
-> Une flotte NixOS déclarative, reliée par WireGuard et déployée avec Colmena.
+Modules NixOS pour gérer une flotte avec Colmena, WireGuard, SOPS, Nginx,
+Restic, Prometheus, Grafana et Kanidm.
 
-`server-setup` est une bibliothèque publique de modules NixOS pour gérer
-plusieurs serveurs comme un seul système : réseau privé, découverte par tags,
-pare-feu inter-services, ingress HTTPS, sauvegardes et monitoring.
-
-Le dépôt ne contient ni inventaire réel ni secret. Une infrastructure utilise
-un second dépôt privé, créé depuis [`template/`](template/), qui fournit les
-nœuds, les tags et les valeurs `infra.*`.
-
-## Pourquoi ce projet ?
-
-- une seule topologie décrit tous les nœuds ;
-- les flux applicatifs internes passent par le mesh WireGuard ;
-- seul Nginx expose les routes HTTP des applications sur Internet ;
-- ACL, sauvegardes, métriques et dashboards sont déclarés par les modules ;
-- les configurations sont évaluées ensemble puis déployées par Colmena ;
-- le dépôt public reste réutilisable et n'impose aucun gestionnaire de secrets.
-
-## Le modèle mental
-
-Un nœud privé possède des **tags**. Un module public enregistre un tag, puis :
-
-1. active son service sur les nœuds qui portent ce tag ;
-2. écoute sur l'adresse VPN quand le service le permet, sinon limite l'accès
-   au mesh avec les ACL ;
-3. déclare ses besoins annexes : ACL, backup, ingress, télémétrie et dashboard ;
-4. laisse les modules centraux agréger ces déclarations pour toute la flotte.
-
-```mermaid
-flowchart LR
-    private["Dépôt privé<br/>nœuds, tags, secrets"] --> modules["Modules publics<br/>options infra.*"]
-    modules --> colmena["Évaluation Colmena<br/>vue complète de la flotte"]
-    colmena --> web["Nœud web-server<br/>Nginx + ACME"]
-    colmena --> apps["Nœuds applicatifs<br/>Gitea, ntfy, Jellyfin…"]
-    colmena --> ops["Nœuds d'exploitation<br/>Prometheus, Grafana, Restic"]
-    web -->|"WireGuard"| apps
-    apps -->|"métriques"| ops
-```
-
-La subtilité importante est la portée des options NixOS :
-
-- `lib.mkIf (services.hasTag tag)` configure uniquement le nœud courant ;
-- une télémétrie ou un ingress peut être déclaré globalement afin qu'un autre
-  nœud — Prometheus ou Nginx — le découvre pendant la même évaluation.
-
-Cette distinction est détaillée dans le
-[`MODULE-GUIDE`](docs/MODULE-GUIDE.md#7b-cross-node-side-effects--global-vs-per-node-guards).
-
-## Architecture à deux dépôts
-
-| Dépôt public — celui-ci | Dépôt privé — votre infrastructure |
-|---|---|
-| Modules NixOS réutilisables | Inventaire des nœuds et tags |
-| Helpers `services` et `ops` | URLs et paramètres des applications |
-| Scripts d'installation | Secrets chiffrés ou chemins runtime |
-| Template de démarrage | Flake Colmena réellement déployé |
-| Checks synthétiques | Configurations matérielles des hôtes |
-
-Le dépôt privé importe `nixosModules.default` depuis ce dépôt. Il peut aussi
-ajouter ses propres modules et paquets sans modifier la bibliothèque publique.
+Le dépôt public contient tout le fonctionnement réutilisable. Chaque
+infrastructure est un second dépôt privé, généré depuis `template/`, qui ne
+conserve que sa topologie, ses choix finaux et ses secrets chiffrés.
 
 ## Démarrage rapide
 
-Prérequis : Nix, une clé SSH et un serveur Debian accessible. L'infection
-remplace le système du serveur ; utilisez-la uniquement sur une machine neuve
-ou sauvegardée.
+Prérequis : Nix, une clé SSH, un serveur Debian neuf et les credentials des
+services externes utilisés. L'infection remplace le système du serveur.
 
 ```sh
-# 1. Créer le dépôt privé
+# Créer le dépôt privé
 nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
 cd ./my-infra
 
-# 2. Renseigner inventory/nodes.nix et les choix non secrets dans config/
+# Renseigner inventory/nodes.nix et config/, puis charger les outils
 nix develop
 
-# 3. Infecter chaque VPS ; -p est le port Debian, --post-port le port NixOS
-infect-server -i ~/.ssh/id_ed25519 -p 22 --post-port 22 root@203.0.113.10
+# Répéter pour chaque serveur Debian
+infect-server -i ~/.ssh/id_ed25519 -p 22 --post-port 22 debian@203.0.113.10
 
-# 4. Préparer le hardware, les clés et les fichiers SOPS manquants
+# Générer hardware, clés, destinataires SOPS et secrets standards
 init-project
 
-# 5. Compléter uniquement les champs signalés, puis vérifier
+# Compléter seulement les champs CHANGEME signalés
 sops secrets/acme.json
-check-project
 
-# 6. Déployer après validation
+# Vérifier, déployer un canari, puis toute la flotte
+check-project
 deploy-project vps1
 deploy-project
 ```
 
-Le guide du dépôt généré se trouve dans
-[`template/README.md`](template/README.md).
+Le [guide d'installation A–Z](docs/SETUP-GUIDE.md) détaille DNS OVH/Lego,
+infection, SOPS, secrets, vérifications, déploiement et opérations courantes.
 
-## Modules disponibles
+## Modèle mental
 
-### Socle et rôles de flotte
+Un nœud possède des tags. Le module responsable d'un tag :
+
+1. active le service sur les nœuds concernés ;
+2. déclare son secret SOPS et sa consommation runtime ;
+3. lie le service au mesh WireGuard ;
+4. publie ses ACL, ingress, backups, métriques, dashboards et clients SSO ;
+5. laisse Nginx, Restic, Prometheus, Grafana et Kanidm agréger ces contributions.
+
+```mermaid
+flowchart LR
+    private["Dépôt privé<br/>topologie, config, secrets chiffrés"] --> modules["Modules publics<br/>contrats infra.*"]
+    modules --> colmena["Colmena<br/>évaluation de la flotte"]
+    colmena --> web["web-server<br/>Nginx + ACME"]
+    colmena --> apps["applications<br/>services sur WireGuard"]
+    colmena --> ops["exploitation<br/>backup + monitoring + SSO"]
+    web -->|"VPN"| apps
+    apps -->|"métriques"| ops
+```
+
+La distinction importante est la portée :
+
+- `services.hasTag tag` protège une configuration locale ;
+- `services.getHostsByTag tag` et `getVpnIpsByTag tag` découvrent toute la
+  flotte pour les contributions inter-nœuds.
+
+## Deux dépôts, une seule responsabilité par service
+
+| Dépôt public | Dépôt privé |
+|---|---|
+| Modules NixOS et déclarations SOPS | Inventaire des nœuds et tags |
+| Helpers `services` et `ops` | URLs, ports et feature flags |
+| Scripts de bootstrap et déploiement | JSON SOPS chiffrés |
+| Template et checks synthétiques | Hardware et modules spécifiques |
+
+`infra.nixosModules.default` importe `sops-nix`. SOPS fait partie du contrat
+normal : il n'existe pas d'adaptateur privé central ni de module SOPS à importer
+séparément. Le code Grafana, secret inclus, reste dans `grafana.nix`; la même
+règle s'applique à chaque service.
+
+Le dépôt privé configure seulement la racine des fichiers chiffrés :
+
+```nix
+imports = [ infra.nixosModules.default ];
+
+infra.sops.secretsDirectory = ./secrets;
+infra.acme.certSyncerPublicKeyFile = ./inventory/keys/syncer.key.pub;
+```
+
+Les options texte et `*File` encore visibles dans certains modules sont des
+chemins de compatibilité et de test. Une nouvelle infrastructure utilise le
+chemin SOPS par défaut.
+
+## Rôles disponibles
+
+### Flotte
 
 | Tag ou activation | Fonction |
 |---|---|
 | Toujours actif | Réseau de base, OpenSSH et mesh WireGuard |
-| `web-server` | Nginx public, ingress HTTPS et métriques VTS |
-| `acme-issuer` | Émission ACME et synchronisation des certificats |
-| `backup` | Sauvegardes Restic et restauration |
-| `node-metrics` | Node Exporter et métriques système |
-| `prometheus` | Agrégation des cibles déclarées par les modules |
-| `grafana` | Dashboards et datasources Prometheus provisionnés |
+| `web-server` | Nginx public et ingress HTTPS |
+| `acme-issuer` | Certificats DNS-01 et synchronisation |
+| `backup` | Backups Restic |
+| `node-metrics` | Node Exporter |
+| `prometheus` | Agrégation des cibles déclarées |
+| `grafana` | Datasources et dashboards provisionnés |
+| `kanidm` | Identité, OIDC/OAuth2 et LDAPS |
+| `infra.rcloneSync.mounts` | Montages ciblés par nœud, sans tag |
 
 ### Applications
 
 | Tag | Service |
 |---|---|
-| `applications/docker-registry` | Registre OCI avec authentification |
-| `applications/filesave-server` | Serveur de partage de fichiers |
+| `applications/docker-registry` | Registre OCI authentifié |
+| `applications/filesave-server` | Partage de fichiers |
 | `applications/gitea` | Forge Git |
 | `applications/jellyfin` | Serveur multimédia |
 | `applications/ntfy` | Notifications push |
-| `applications/reposilite` | Dépôts Maven |
+| `applications/reposilite` | Dépôt Maven |
 | `applications/www` | Hébergement statique |
-| `applications/sncb-insights` | Intégration spécifique avec paquet fourni par le dépôt privé |
+| `applications/sncb-insights` | Application fournie par le dépôt privé |
 
-### Modules spéciaux
-
-Ces modules fonctionnent, mais ne font pas partie du check synthétique
-« services stables ». Kanidm possède un check SSO dédié :
-
-| Activation | Pourquoi il est spécial |
-|---|---|
-| `kanidm` | Provisioning d'identité, OAuth2 et LDAPS |
-| `infra.rcloneSync.mounts` | Montages ciblés par `targetNodes`, sans tag |
-
-L'administration des comptes, credentials et groupes Kanidm est détaillée
-dans le [`guide CLI Kanidm`](docs/KANIDM-CLI.md).
-
-## Lire un module en une minute
-
-[`gitea.nix`](nixos/modules/applications/gitea.nix) est un bon exemple. Les
-modules applicatifs suivent le même chemin de lecture :
-
-1. `tag`, `enabled`, `port` et `dataDir` donnent le contrat du service ;
-2. `options.infra.<app>` expose les valeurs du dépôt privé ;
-3. `infra.registeredTags` rend les fautes de tag détectables ;
-4. le bloc `lib.mkIf enabled` contient le service local, ses ACL et backups ;
-5. les blocs suivants publient télémétrie, ingress et dashboards à la flotte.
-
-```nix
-let
-  tag = "applications/myapp";
-  enabled = services.hasTag tag;
-  cfg = config.infra.myapp;
-in {
-  options.infra.myapp = { /* API publique */ };
-
-  config = lib.mkMerge [
-    { infra.registeredTags = [ tag ]; }
-
-    (lib.mkIf enabled {
-      services.myapp.enable = true;
-      infra.security.acls = [ /* accès VPN */ ];
-      infra.backup.paths = [ "/var/lib/myapp" ];
-    })
-
-    { infra.telemetry.myapp = /* découverte globale */; }
-
-    (lib.mkIf (cfg.url != null && services.getVpnIpsByTag tag != [ ]) {
-      infra.ingress.myapp = /* route Nginx globale */;
-    })
-  ];
-}
-```
-
-Le squelette complet et les règles de portée sont documentés dans
-[`docs/MODULE-GUIDE.md`](docs/MODULE-GUIDE.md).
-
-## Secrets
-
-Le module principal importe `sops-nix` et chaque service possède sa déclaration
-SOPS :
-
-- une ancienne valeur texte peut être envoyée par `ops.mkSecretKeys` via
-  `deployment.keys` Colmena ;
-- les options `*File` permettent de fournir un chemin runtime tel que
-  `/run/secrets/...` ;
-- un module interdit de fournir simultanément la valeur texte et son fichier ;
-- sans valeur texte ni fichier injecté, le module déclare son secret SOPS ;
-- un secret runtime n'est jamais lu avec `builtins.readFile`.
-
-Les valeurs texte évitent le store de la machine cible, mais un dépôt Flake
-privé en clair peut encore être copié dans le store de la machine qui évalue.
-Pour une nouvelle infrastructure, préférez des fichiers chiffrés dans le dépôt
-privé.
-
-Le dépôt privé n'importe que `nixosModules.default`, indique
-`infra.sops.secretsDirectory`, et ne conserve que les valeurs finales chiffrées.
-`config/` reste limité aux choix fonctionnels `infra.*`.
-
-## Outils
-
-Les commandes suivantes sont fournies par le dev shell :
+## Outils du dev shell
 
 | Commande | Rôle |
 |---|---|
 | `bootstrap-project` | Créer un dépôt privé depuis le template |
 | `infect-server` | Remplacer Debian par NixOS |
-| `adopt-hardware` | Récupérer `hardware-configuration.nix` avec root |
-| `generate-mesh` | Créer les clés WireGuard absentes et recalculer les clés publiques |
-| `export-ssh-key` | Dériver les clés publiques depuis `node.sshKey` |
-| `generate-key` | Créer ou republier la clé du cert-syncer |
-| `update-sops-keys` | Mettre à jour `.sops.yaml` et re-chiffrer sans exposer les valeurs |
-| `init-project` | Préparer un dépôt privé et créer ses secrets manquants |
-| `check-project` | Vérifier les secrets, le flake et tous les nœuds Colmena |
+| `init-project` | Préparer hardware, clés, SOPS et secrets absents |
+| `update-sops-keys` | Recalculer les destinataires et re-chiffrer en staging |
+| `check-project` | Refuser les placeholders puis évaluer Nix et Colmena |
 | `deploy-project [hôte]` | Initialiser, vérifier et déployer |
+| `adopt-hardware` | Récupérer les configurations matérielles |
+| `generate-mesh` | Générer les clés WireGuard absentes |
+| `export-ssh-key` | Exporter les clés publiques d'administration |
+| `generate-key` | Générer la paire SSH du cert-syncer |
 
-## Structure du dépôt
+`init-project` et `deploy-project` sont idempotents : un fichier secret existant
+n'est pas remplacé. Les credentials externes manquants sont créés sous forme de
+`CHANGEME` chiffrés et listés précisément.
+
+## Structure
 
 ```text
 .
-├── flake.nix                 # module public, packages et checks
+├── flake.nix
 ├── nixos/
-│   ├── lib/                  # services.hasTag, découverte et mkSecretKeys
-│   ├── modules/              # applications, réseau, sécurité, web, monitoring
-│   └── pkgs/                 # paquets binaires spécifiques
+│   ├── lib/                  # découverte par tags et helpers de déploiement
+│   ├── modules/              # modules NixOS par responsabilité
+│   └── pkgs/                 # paquets spécifiques
 ├── scripts/                  # commandes distribuées par le flake
 ├── template/                 # squelette du dépôt privé
 ├── docs/
-│   ├── KANIDM-CLI.md         # administrer comptes et groupes Kanidm
-│   └── MODULE-GUIDE.md       # écrire et comprendre un module
-└── AGENTS.md                 # modèle du dépôt pour les agents de code
+│   ├── SETUP-GUIDE.md        # installation et exploitation A–Z
+│   ├── MODULE-GUIDE.md       # contrat complet d'un module
+│   └── KANIDM-CLI.md         # administration Kanidm
+└── AGENTS.md
 ```
+
+## Documentation
+
+- [Installer une infrastructure de A à Z](docs/SETUP-GUIDE.md)
+- [Écrire ou maintenir un module](docs/MODULE-GUIDE.md)
+- [Administrer les comptes et groupes Kanidm](docs/KANIDM-CLI.md)
+- [Comprendre le dépôt privé généré](template/README.md)
 
 ## Développer et vérifier
 
+Un module public doit rester propriétaire de toutes ses intégrations. Le
+[MODULE-GUIDE](docs/MODULE-GUIDE.md) fournit le squelette, les règles de portée
+et la checklist réseau, secrets, ingress, backup, métriques, dashboard et SSO.
+
 ```sh
-# Dépôt public : modules synthétiques, template et scripts
+# Dépôt public
 nix flake check --all-systems
 
-# Dépôt privé généré : secrets, flake puis drvPath de chaque nœud Colmena
+# Dépôt privé, depuis nix develop
 check-project
 ```
 
-Le check « services stables » exclut volontairement Kanidm et Rclone. Le check
-`grafana-sso` couvre séparément le provisioning Kanidm et l'intégration
-Grafana. Une évaluation réussie ne remplace pas un déploiement canari.
-
-## Vers une V2 plus lisible
-
-La V2 ne remplace pas NixOS par une abstraction maison. Elle normalise l'ordre
-et le vocabulaire des modules existants, conserve les API compatibles et traite
-séparément Kanidm et Rclone.
+Après une modification de déploiement, une évaluation réussie doit être suivie
+d'un canari réel avant `deploy-project` sur toute la flotte.

@@ -1,18 +1,18 @@
-# Secrets du projet
+# Secrets chiffrés
 
-Ce dossier ne contient que les fichiers JSON chiffrés. Le câblage standard
-SOPS est inclus dans `infra.nixosModules.default` et appartient à chaque module
-de service.
+Ce dossier contient uniquement les valeurs JSON chiffrées par SOPS. Les
+déclarations `sops.secrets`, chemins runtime, propriétaires et permissions
+restent dans le module public ou privé qui consomme chaque secret.
 
 ```sh
-init-project                 # crée les fichiers manquants et affiche les champs à remplir
-sops secrets/acme.json       # édite un fichier sans produire de copie claire
-update-sops-keys             # resynchronise les destinataires après un changement de nœud
-check-project                # vérifie les secrets et la configuration
+init-project             # crée les fichiers absents et liste les champs externes
+sops secrets/acme.json   # édite sans laisser de copie claire dans le dépôt
+update-sops-keys         # met à jour les destinataires de tous les JSON
+check-project            # refuse CHANGEME puis évalue Nix et Colmena
 ```
 
-`init-project` ne remplace jamais un fichier existant. Les credentials externes
-restent à `CHANGEME` dans les fichiers chiffrés jusqu'à leur saisie. Les secrets
-aléatoires et les clés locales sont générés automatiquement.
+`init-project` ne remplace jamais un fichier existant. Commitez `.sops.yaml` et
+les JSON re-chiffrés ensemble après tout changement de destinataires.
 
-Les secrets propres à un module privé restent déclarés par ce module privé.
+Guide complet :
+https://github.com/theking90000/server-setup/blob/main/docs/SETUP-GUIDE.md
