@@ -96,7 +96,26 @@ if has_tag "applications/gitea" && has_tag "kanidm"; then
   encrypt_new "$TMP/gitea.json" secrets/gitea.json
 fi
 
-if has_tag "kanidm" && { has_tag "grafana" || has_tag "applications/gitea"; }; then
+if has_tag "applications/synapse"; then
+  random_file "$TMP/synapse-registration"
+  if has_tag "kanidm"; then
+    random_file "$TMP/synapse-oidc"
+    jq -n \
+      --rawfile registrationSecret "$TMP/synapse-registration" \
+      --rawfile oidcSecret "$TMP/synapse-oidc" \
+      '{registration_shared_secret: ($registrationSecret | rtrimstr("\n")), oidc_client_secret: ($oidcSecret | rtrimstr("\n"))}' \
+      > "$TMP/synapse.json"
+  else
+    jq -n --rawfile registrationSecret "$TMP/synapse-registration" \
+      '{registration_shared_secret: ($registrationSecret | rtrimstr("\n"))}' \
+      > "$TMP/synapse.json"
+  fi
+  encrypt_new "$TMP/synapse.json" secrets/synapse.json
+fi
+
+if has_tag "kanidm" && {
+  has_tag "grafana" || has_tag "applications/gitea" || has_tag "applications/synapse"
+}; then
   random_file "$TMP/kanidm-password"
   jq -n --rawfile password "$TMP/kanidm-password" \
     '{idm_admin_password: ($password | rtrimstr("\n"))}' > "$TMP/kanidm.json"

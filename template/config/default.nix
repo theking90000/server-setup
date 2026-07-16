@@ -10,6 +10,7 @@
     ./ntfy/ntfy.nix
     ./rclone-sync/rclone-sync.nix
     ./reposilite/reposilite.nix
+    ./synapse/synapse.nix
     ./www/www.nix
   ];
 }

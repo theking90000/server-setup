@@ -106,8 +106,26 @@ BACKUP_NODE='{"nodes":{"vps1":{"publicIp":"192.0.2.1","sshKey":"/tmp/key","sshPo
     echo "check-project should reject CHANGEME" >&2
     exit 1
   fi
-  sed -i 's/CHANGEME/configured/g' secrets/*.json
+  for secret in secrets/*.json; do
+    sed 's/CHANGEME/configured/g' "$secret" > "$secret.tmp"
+    mv "$secret.tmp" "$secret"
+  done
   bash "$ROOT/scripts/check-project.sh"
+)
+
+SYNAPSE_REPO="$TMP/synapse-repo"
+mkdir -p "$SYNAPSE_REPO/inventory/wireguard/vps1" "$SYNAPSE_REPO/inventory/keys" "$SYNAPSE_REPO/config"
+touch "$SYNAPSE_REPO/inventory/nodes.nix" "$SYNAPSE_REPO/flake.nix"
+printf 'wireguard-private\n' > "$SYNAPSE_REPO/inventory/wireguard/vps1/private.key"
+printf 'syncer-private\n' > "$SYNAPSE_REPO/inventory/keys/syncer.key"
+
+SYNAPSE_NODE='{"nodes":{"vps1":{"publicIp":"192.0.2.1","sshKey":"/tmp/key","sshPort":22,"tags":["applications/synapse","kanidm"]}}}'
+(
+  cd "$SYNAPSE_REPO"
+  NODES_JSON="$SYNAPSE_NODE" bash "$ROOT/scripts/init-project.sh"
+  jq -e '.registration_shared_secret | length == 64' secrets/synapse.json > /dev/null
+  jq -e '.oidc_client_secret | length == 64' secrets/synapse.json > /dev/null
+  jq -e '.idm_admin_password | length == 64' secrets/kanidm.json > /dev/null
 )
 
 echo "SOPS project script tests passed."

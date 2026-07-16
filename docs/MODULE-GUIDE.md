@@ -340,8 +340,20 @@ infra.backup.paths = [ "/var/lib/myapp" ];
 
 Do not back up reproducible caches. Check that the service actually writes to
 this path, that restoration is possible, and whether it requires a pause or a
-consistent dump. The Restic module then aggregates all paths on nodes with the
-`backup` tag.
+consistent dump. Database-backed applications can also contribute an idempotent
+preparation command that writes an atomic dump into one of those paths:
+
+```nix
+infra.backup.prepareCommands = [
+  ''
+    pg_dump --format=custom --file=/var/lib/myapp-backup/database.dump.tmp myapp
+    mv /var/lib/myapp-backup/database.dump.tmp /var/lib/myapp-backup/database.dump
+  ''
+];
+```
+
+The Restic module aggregates the paths and preparation commands on nodes with
+the `backup` tag. A failing preparation command aborts that backup run.
 
 ### 6.2 Prometheus
 
@@ -352,6 +364,7 @@ infra.telemetry.myapp = map (host: {
   targets = [ "${host}:9091" ];
   labels = { inherit host; };
   scheme = "http";
+  metrics_path = "/metrics";
   tls_config = null;
   basic_auth = null;
 }) (services.getHostsByTag tag);

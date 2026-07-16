@@ -121,6 +121,10 @@
                 upstream-base-url = inactiveServiceValue;
               };
               infra.reposilite.url = inactiveServiceValue;
+              infra.synapse = {
+                url = inactiveServiceValue;
+                serverName = inactiveServiceValue;
+              };
               infra.restic = {
                 repository = inactiveServiceValue;
                 password = inactiveServiceValue;
@@ -150,6 +154,7 @@
                 "applications/ntfy"
                 "applications/reposilite"
                 "applications/sncb-insights"
+                "applications/synapse"
                 "applications/www"
                 "acme-issuer"
               ];
@@ -175,6 +180,10 @@
               infra.restic.repository = "local:/tmp/backup";
               infra.restic.password = "test";
               infra.sncb-insights.package = checkPkgs.writeShellScriptBin "sncb-insights" "exit 0";
+              infra.synapse = {
+                url = "https://matrix.example.test";
+                serverName = "example.test";
+              };
             }
           ];
       fileSecretsNode =
@@ -239,6 +248,32 @@
             {
               infra.gitea.url = "https://git.example.test";
               infra.kanidm.url = "https://auth.example.test";
+            }
+          ];
+      synapseSsoNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [
+                "applications/synapse"
+                "backup"
+                "kanidm"
+                "prometheus"
+                "web-server"
+              ];
+            };
+          }
+          [
+            {
+              infra.kanidm.url = "https://auth.example.test";
+              infra.restic = {
+                repository = "local:/tmp/backup";
+                password = "test";
+              };
+              infra.synapse = {
+                url = "https://matrix.example.test";
+                serverName = "example.test";
+              };
             }
           ];
       rcloneMount = lib.findFirst (
@@ -438,6 +473,51 @@
           assert lib.hasInfix "admin auth add-oauth" giteaSsoNode.config.systemd.services.gitea.preStart;
           assert lib.hasInfix "admin auth update-oauth" giteaSsoNode.config.systemd.services.gitea.preStart;
           mkEvalCheck "gitea-sso" giteaSsoNode;
+        synapse =
+          let
+            oidc = builtins.head synapseSsoNode.config.services.matrix-synapse.settings.oidc_providers;
+            oauth2 = synapseSsoNode.config.services.kanidm.provision.systems.oauth2.synapse;
+            backup = synapseSsoNode.config.services.restic.backups."host-backup";
+            serverDelegation =
+              synapseSsoNode.config.services.nginx.virtualHosts."example.test".locations."= /.well-known/matrix/server";
+          in
+          assert builtins.attrNames synapseSsoNode.config.infra.sso.synapse.groups == [ "users" ];
+          assert synapseSsoNode.config.infra.sso.synapse.pkce;
+          assert
+            synapseSsoNode.config.infra.sso.synapse.redirectUris == [
+              "https://matrix.example.test/_synapse/client/oidc/callback"
+            ];
+          assert !oauth2.allowInsecureClientDisablePkce;
+          assert oauth2.basicSecretFile == "/run/secrets/sso/synapse-client-secret";
+          assert oidc.issuer == "https://auth.example.test/oauth2/openid/synapse/";
+          assert oidc.client_secret_path == "/run/credentials/matrix-synapse.service/oidc_client_secret";
+          assert oidc.pkce_method == "always";
+          assert oidc.allow_existing_users;
+          assert !synapseSsoNode.config.services.matrix-synapse.settings.password_config.localdb_enabled;
+          assert
+            synapseSsoNode.config.services.matrix-synapse.settings.database.args.database == "matrix-synapse";
+          assert synapseSsoNode.config.services.matrix-synapse.settings.serve_server_wellknown == false;
+          assert synapseSsoNode.config.services.postgresql.enable;
+          assert lib.hasInfix "--locale=C" synapseSsoNode.config.systemd.services.postgresql-setup.script;
+          assert builtins.elem "oidc_client_secret:/run/secrets/sso/synapse-client-secret"
+            synapseSsoNode.config.systemd.services.matrix-synapse.serviceConfig.LoadCredential;
+          assert synapseSsoNode.config.infra.ingress.synapse.backend == [ "10.100.0.1:8008" ];
+          assert synapseSsoNode.config.infra.ingress.synapse.blockPaths == [ "/_synapse/admin" ];
+          assert lib.hasInfix "client_max_body_size 100M"
+            synapseSsoNode.config.services.nginx.virtualHosts."matrix.example.test".extraConfig;
+          assert lib.hasInfix "proxy_read_timeout 600s"
+            synapseSsoNode.config.services.nginx.virtualHosts."matrix.example.test".locations."/".extraConfig;
+          assert builtins.length synapseSsoNode.config.infra.telemetry.synapse == 1;
+          assert (builtins.head synapseSsoNode.config.infra.telemetry.synapse).labels.host == "test";
+          assert
+            (builtins.head synapseSsoNode.config.infra.telemetry.synapse).metrics_path == "/_synapse/metrics";
+          assert (builtins.head synapseSsoNode.config.infra.telemetry.synapse).targets == [ "test:9000" ];
+          assert lib.hasInfix "matrix.example.test:443" serverDelegation.return;
+          assert builtins.elem "/var/lib/matrix-synapse" synapseSsoNode.config.infra.backup.paths;
+          assert builtins.elem "/var/lib/matrix-synapse-backup" synapseSsoNode.config.infra.backup.paths;
+          assert lib.hasInfix "pg_dump" backup.backupPrepareCommand;
+          assert lib.hasInfix "e2e_one_time_keys_json" backup.backupPrepareCommand;
+          mkEvalCheck "synapse" synapseSsoNode;
         rclone-config =
           assert rcloneMount != null;
           assert lib.hasInfix "config=/var/lib/rclone-sync/test/rclone.conf" rcloneMount.options;
@@ -489,6 +569,15 @@
           assert giteaSsoNode.config.sops.secrets."sso/gitea-client-secret".owner == "kanidm";
           assert giteaSsoNode.config.sops.secrets."sso/gitea-client-secret".mode == "0400";
           mkEvalCheck "sops-gitea" giteaSsoNode;
+        sops-synapse =
+          assert assertSecret synapseSsoNode "synapse/registration-shared-secret" ./tests/sops/synapse.json
+            "registration_shared_secret";
+          assert assertSecret synapseSsoNode "sso/synapse-client-secret" ./tests/sops/synapse.json
+            "oidc_client_secret";
+          assert synapseSsoNode.config.sops.secrets."synapse/registration-shared-secret".mode == "0400";
+          assert synapseSsoNode.config.sops.secrets."sso/synapse-client-secret".owner == "kanidm";
+          assert synapseSsoNode.config.sops.secrets."sso/synapse-client-secret".mode == "0400";
+          mkEvalCheck "sops-synapse" synapseSsoNode;
         sops-docker-registry =
           assert assertSecret registrySopsNode "docker-registry/accounts" ./tests/sops/docker-registry.json
             "accounts";

@@ -38,6 +38,7 @@ let
     }
     // lib.optionalAttrs (primary != null) {
       inherit (primary) scheme;
+      inherit (primary) metrics_path;
     }
     // lib.optionalAttrs (primary != null && primary.tls_config != null) {
       inherit (primary) tls_config;
@@ -68,6 +69,11 @@ in
               ];
               default = "http";
               description = "Scheme pour le scrape (http ou https).";
+            };
+            metrics_path = lib.mkOption {
+              type = lib.types.str;
+              default = "/metrics";
+              description = "Chemin HTTP exposant les métriques Prometheus.";
             };
             tls_config = lib.mkOption {
               type = lib.types.nullOr (

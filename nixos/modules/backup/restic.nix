@@ -25,6 +25,7 @@ let
   tag = "backup";
   enabled = services.hasTag tag;
   backupPaths = config.infra.backup.paths;
+  backupPrepareCommands = config.infra.backup.prepareCommands;
 
   repositoryPath =
     if cfg.repositoryFile != null then
@@ -136,6 +137,10 @@ in
         repositoryFile = repositoryPath;
         passwordFile = passwordPath;
         paths = backupPaths;
+
+        backupPrepareCommand = lib.mkIf (backupPrepareCommands != [ ]) (
+          lib.concatStringsSep "\n" backupPrepareCommands
+        );
 
         pruneOpts = [
           "--keep-daily 7"
