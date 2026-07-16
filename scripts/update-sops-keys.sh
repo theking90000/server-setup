@@ -43,7 +43,7 @@ while IFS= read -r HOSTNAME; do
 
   echo "Reading the SSH host key for $HOSTNAME..."
   HOST_RECIPIENT=$(
-    ssh -o BatchMode=yes -i "$SSH_KEY" -p "$SSH_PORT" "root@$PUBLIC_IP" \
+    ssh -n -o BatchMode=yes -i "$SSH_KEY" -p "$SSH_PORT" "root@$PUBLIC_IP" \
       'cat /etc/ssh/ssh_host_ed25519_key.pub' | ssh-to-age
   )
   ANCHOR=$(printf '%s' "$HOSTNAME" | tr -c 'A-Za-z0-9_' '_')
