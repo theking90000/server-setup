@@ -24,6 +24,7 @@ secrets, hardware configuration, and deployment-specific modules.
 
 ## Features
 
+- 🧷 **Batteries-included integrations**: ingress, backups, metrics and SSO wire themselves across the fleet through one first-class, stable mechanism
 - 🧬 **Infrastructure as code**: the entire fleet is declarative and version-controlled
 - 🪨 **Robust & deterministic**: plain systemd on NixOS, reproducible builds
 - 🌐 **Private mesh**: every node joins an encrypted WireGuard network automatically
@@ -75,6 +76,10 @@ The [setup guide](docs/SETUP-GUIDE.md) covers OVH/Lego DNS, server infection,
 SOPS, secrets, checks, deployment, and routine operations.
 
 ## 🧩 How modules configure the fleet
+
+Cross-fleet integration is a first-class, stable part of the design, not an
+add-on. A module declares what it needs, and the shared services wire it up
+across every node.
 
 Each node has tags. The module that registers a tag:
 
