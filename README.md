@@ -12,7 +12,7 @@
   <img alt="Secrets: SOPS" src="https://img.shields.io/badge/secrets-SOPS-1A7F37?logo=gnuprivacyguard&logoColor=white">
 </p>
 
-Server Setup turns a fleet of fresh Debian machines into a fully declarative
+Server Setup turns a fleet of fresh Linux servers into a fully declarative
 NixOS deployment. Every server is described in code, reproducible bit for bit,[^repro]
 and runs on plain systemd, with no container runtime or orchestrator in the way.
 Nodes join a private WireGuard mesh and automatically get HTTPS ingress, single
@@ -34,12 +34,19 @@ secrets, hardware configuration, and deployment-specific modules.
 
 ## 🚀 Quick start
 
-Requirements: Nix, an SSH key, a fresh Debian server, and credentials for the
+Requirements: Nix, an SSH key, a fresh Linux server, and credentials for the
 enabled external services.
 
 > [!WARNING]
 > `infect-server` **replaces the server's operating system**. Only run it on a
 > machine you intend to wipe.
+
+> [!NOTE]
+> The starting OS is not tied to Debian. Onboarding runs through `infect-server`
+> (built on `nixos-infect`), so any host that tool can convert works. After
+> infection the node runs standard NixOS on x86_64 or arm64, Raspberry Pi 5
+> included. Tested so far on OVH VPS provisioned with Debian and on a Raspberry
+> Pi 5 running Raspberry Pi OS.
 
 ```sh
 # Create the private repository
@@ -49,7 +56,7 @@ cd ./my-infra
 # Edit inventory/nodes.nix and the configuration of enabled services
 nix develop
 
-# Repeat for each Debian server
+# Repeat for each server
 infect-server -i ~/.ssh/id_ed25519 -p 22 --post-port 22 debian@203.0.113.10
 
 # Generate hardware configuration, keys, SOPS recipients, and standard secrets
@@ -171,7 +178,7 @@ New deployments use SOPS by default.
 | Command                 | Action                                                               |
 | ----------------------- | -------------------------------------------------------------------- |
 | `bootstrap-project`     | Create a private repository from the template                        |
-| `infect-server`         | Replace Debian with NixOS                                            |
+| `infect-server`         | Replace the existing OS with NixOS                                   |
 | `init-project`          | Create missing hardware configuration, keys, SOPS files, and secrets |
 | `update-sops-keys`      | Recompute recipients and re-encrypt staged files                     |
 | `check-project`         | Reject encrypted placeholders, then evaluate Nix and Colmena         |
