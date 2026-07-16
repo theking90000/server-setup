@@ -1,89 +1,81 @@
 # Server Setup
 
-Modules NixOS pour gérer une flotte avec Colmena, WireGuard, SOPS, Nginx,
-Restic, Prometheus, Grafana et Kanidm.
+This repository provides NixOS modules and commands to deploy a server fleet
+with Colmena. It configures WireGuard, SOPS, Nginx, Restic, Prometheus, Grafana,
+Kanidm, and the applications listed below.
 
-Le dépôt public contient tout le fonctionnement réutilisable. Chaque
-infrastructure est un second dépôt privé, généré depuis `template/`, qui ne
-conserve que sa topologie, ses choix finaux et ses secrets chiffrés.
+Each deployment uses a separate private repository generated from `template/`.
+That repository contains the node topology, service configuration, encrypted
+secrets, hardware configuration, and deployment-specific modules.
 
-## Démarrage rapide
+## Quick start
 
-Prérequis : Nix, une clé SSH, un serveur Debian neuf et les credentials des
-services externes utilisés. L'infection remplace le système du serveur.
+Requirements: Nix, an SSH key, a fresh Debian server, and credentials for the
+enabled external services. `infect-server` replaces the server's current
+operating system.
 
 ```sh
-# Créer le dépôt privé
+# Create the private repository
 nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
 cd ./my-infra
 
-# Renseigner inventory/nodes.nix et la config des services activés
+# Edit inventory/nodes.nix and the configuration of enabled services
 nix develop
 
-# Répéter pour chaque serveur Debian
+# Repeat for each Debian server
 infect-server -i ~/.ssh/id_ed25519 -p 22 --post-port 22 debian@203.0.113.10
 
-# Générer hardware, clés, destinataires SOPS et secrets standards
+# Generate hardware configuration, keys, SOPS recipients, and standard secrets
 init-project
 
-# Compléter seulement les champs CHANGEME signalés
+# Replace the reported CHANGEME values
 sops secrets/acme.json
 
-# Vérifier, déployer un canari, puis toute la flotte
+# Check the configuration, deploy one canary, then deploy the full fleet
 check-project
 deploy-project vps1
 deploy-project
 ```
 
-Le [guide d'installation A–Z](docs/SETUP-GUIDE.md) détaille DNS OVH/Lego,
-infection, SOPS, secrets, vérifications, déploiement et opérations courantes.
+The [setup guide](docs/SETUP-GUIDE.md) covers OVH/Lego DNS, server infection,
+SOPS, secrets, checks, deployment, and routine operations.
 
-## Modèle mental
+## How modules configure the fleet
 
-Un nœud possède des tags. Le module responsable d'un tag :
+Each node has tags. The module that registers a tag:
 
-1. active le service sur les nœuds concernés ;
-2. déclare son secret SOPS et sa consommation runtime ;
-3. lie le service au mesh WireGuard ;
-4. publie ses ACL, ingress, backups, métriques, dashboards et clients SSO ;
-5. laisse Nginx, Restic, Prometheus, Grafana et Kanidm agréger ces contributions.
+1. enables the service on matching nodes;
+2. declares its SOPS secret and runtime consumer;
+3. binds the service to the WireGuard mesh;
+4. registers its ACLs, ingress, backups, metrics, dashboards, and SSO clients;
+5. lets Nginx, Restic, Prometheus, Grafana, and Kanidm collect these
+   declarations.
 
-```mermaid
-flowchart LR
-    private["Dépôt privé<br/>topologie, config, secrets chiffrés"] --> modules["Modules publics<br/>contrats infra.*"]
-    modules --> colmena["Colmena<br/>évaluation de la flotte"]
-    colmena --> web["web-server<br/>Nginx + ACME"]
-    colmena --> apps["applications<br/>services sur WireGuard"]
-    colmena --> ops["exploitation<br/>backup + monitoring + SSO"]
-    web -->|"VPN"| apps
-    apps -->|"métriques"| ops
-```
+Scope determines which guard a module uses:
 
-La distinction importante est la portée :
+- `services.hasTag tag` guards configuration for the current node.
+- `services.getHostsByTag tag` and `getVpnIpsByTag tag` discover nodes across
+  the fleet for cross-node declarations.
 
-- `services.hasTag tag` protège une configuration locale ;
-- `services.getHostsByTag tag` et `getVpnIpsByTag tag` découvrent toute la
-  flotte pour les contributions inter-nœuds.
+A file under `config/` can remain imported without configuration while no node
+has its service tag. Its placeholders and values are not evaluated in that
+case. The file must still contain valid Nix syntax.
 
-Un fichier sous `config/` peut rester importé sans être configuré tant qu'aucun
-nœud ne porte le tag du service. Ses placeholders et valeurs ne sont alors pas
-évalués. Le fichier doit néanmoins rester du Nix syntaxiquement valide.
+## Service ownership and private configuration
 
-## Deux dépôts, une seule responsabilité par service
-
-| Dépôt public | Dépôt privé |
+| Public repository | Private repository |
 |---|---|
-| Modules NixOS et déclarations SOPS | Inventaire des nœuds et tags |
-| Helpers `services` et `ops` | URLs, ports et feature flags |
-| Scripts de bootstrap et déploiement | JSON SOPS chiffrés |
-| Template et checks synthétiques | Hardware et modules spécifiques |
+| NixOS modules and SOPS declarations | Node inventory and tags |
+| `services` and `ops` helpers | URLs, ports, and feature flags |
+| Bootstrap and deployment commands | Encrypted SOPS JSON files |
+| Template and synthetic checks | Hardware configuration and deployment-specific modules |
 
-`infra.nixosModules.default` importe `sops-nix`. SOPS fait partie du contrat
-normal : il n'existe pas d'adaptateur privé central ni de module SOPS à importer
-séparément. Le code Grafana, secret inclus, reste dans `grafana.nix`; la même
-règle s'applique à chaque service.
+`infra.nixosModules.default` imports `sops-nix`. A private repository does not
+need a separate SOPS module or a central adapter. `grafana.nix` declares both
+the Grafana service and its secret. Each public service module follows the same
+ownership rule.
 
-Le dépôt privé configure seulement la racine des fichiers chiffrés :
+The private repository only sets the encrypted secret directory:
 
 ```nix
 imports = [ infra.nixosModules.default ];
@@ -92,96 +84,96 @@ infra.sops.secretsDirectory = ./secrets;
 infra.acme.certSyncerPublicKeyFile = ./inventory/keys/syncer.key.pub;
 ```
 
-Les options texte et `*File` encore visibles dans certains modules sont des
-chemins de compatibilité et de test. Une nouvelle infrastructure utilise le
-chemin SOPS par défaut.
+Some modules still expose text and `*File` options for compatibility and tests.
+New deployments use SOPS by default.
 
-## Rôles disponibles
+## Available roles
 
-### Flotte
+### Fleet services
 
-| Tag ou activation | Fonction |
+| Tag or activation | Service |
 |---|---|
-| Toujours actif | Réseau de base, OpenSSH et mesh WireGuard |
-| `web-server` | Nginx public et ingress HTTPS |
-| `acme-issuer` | Certificats DNS-01 et synchronisation |
-| `backup` | Backups Restic |
+| Always enabled | Base networking, OpenSSH, and the WireGuard mesh |
+| `web-server` | Public Nginx and HTTPS ingress |
+| `acme-issuer` | DNS-01 certificates and certificate synchronization |
+| `backup` | Restic backups |
 | `node-metrics` | Node Exporter |
-| `prometheus` | Agrégation des cibles déclarées |
-| `grafana` | Datasources et dashboards provisionnés |
-| `kanidm` | Identité, OIDC/OAuth2 et LDAPS |
-| `infra.rcloneSync.mounts` | Montages ciblés par nœud, sans tag |
+| `prometheus` | Collection of registered scrape targets |
+| `grafana` | Provisioned data sources and dashboards |
+| `kanidm` | Identity, OIDC/OAuth2, and LDAPS |
+| `infra.rcloneSync.mounts` | Per-node mounts without a tag |
 
 ### Applications
 
 | Tag | Service |
 |---|---|
-| `applications/docker-registry` | Registre OCI authentifié |
-| `applications/filesave-server` | Partage de fichiers |
-| `applications/gitea` | Forge Git |
-| `applications/jellyfin` | Serveur multimédia |
-| `applications/ntfy` | Notifications push |
-| `applications/reposilite` | Dépôt Maven |
-| `applications/www` | Hébergement statique |
-| `applications/sncb-insights` | Application fournie par le dépôt privé |
+| `applications/docker-registry` | Authenticated OCI registry |
+| `applications/filesave-server` | File sharing |
+| `applications/gitea` | Git forge |
+| `applications/jellyfin` | Media server |
+| `applications/ntfy` | Push notifications |
+| `applications/reposilite` | Maven repository |
+| `applications/www` | Static hosting |
+| `applications/sncb-insights` | Application provided by the private repository |
 
-## Outils du dev shell
+## Development shell commands
 
-| Commande | Rôle |
+| Command | Action |
 |---|---|
-| `bootstrap-project` | Créer un dépôt privé depuis le template |
-| `infect-server` | Remplacer Debian par NixOS |
-| `init-project` | Préparer hardware, clés, SOPS et secrets absents |
-| `update-sops-keys` | Recalculer les destinataires et re-chiffrer en staging |
-| `check-project` | Refuser les placeholders chiffrés puis évaluer Nix et Colmena |
-| `deploy-project [hôte]` | Initialiser, vérifier et déployer |
-| `adopt-hardware` | Récupérer les configurations matérielles |
-| `generate-mesh` | Générer les clés WireGuard absentes |
-| `export-ssh-key` | Exporter les clés publiques d'administration |
-| `generate-key` | Générer la paire SSH du cert-syncer |
+| `bootstrap-project` | Create a private repository from the template |
+| `infect-server` | Replace Debian with NixOS |
+| `init-project` | Create missing hardware configuration, keys, SOPS files, and secrets |
+| `update-sops-keys` | Recompute recipients and re-encrypt staged files |
+| `check-project` | Reject encrypted placeholders, then evaluate Nix and Colmena |
+| `deploy-project [host]` | Initialize, check, and deploy |
+| `adopt-hardware` | Fetch hardware configuration from the nodes |
+| `generate-mesh` | Generate missing WireGuard keys |
+| `export-ssh-key` | Export administration SSH public keys |
+| `generate-key` | Generate the certificate syncer's SSH key pair |
 
-`init-project` et `deploy-project` sont idempotents : un fichier secret existant
-n'est pas remplacé. Les credentials externes manquants sont créés sous forme de
-`CHANGEME` chiffrés et listés précisément.
+`init-project` and `deploy-project` do not overwrite existing secret files.
+Missing external credentials are created as encrypted `CHANGEME` values and
+reported by path.
 
-## Structure
+## Repository layout
 
 ```text
 .
 ├── flake.nix
 ├── nixos/
-│   ├── lib/                  # découverte par tags et helpers de déploiement
-│   ├── modules/              # modules NixOS par responsabilité
-│   └── pkgs/                 # paquets spécifiques
-├── scripts/                  # commandes distribuées par le flake
-├── template/                 # squelette du dépôt privé
+│   ├── lib/                  # tag discovery and deployment helpers
+│   ├── modules/              # NixOS modules grouped by service
+│   └── pkgs/                 # project-specific packages
+├── scripts/                  # commands distributed by the flake
+├── template/                 # private repository skeleton
 ├── docs/
-│   ├── SETUP-GUIDE.md        # installation et exploitation A–Z
-│   ├── MODULE-GUIDE.md       # contrat complet d'un module
-│   └── KANIDM-CLI.md         # administration Kanidm
+│   ├── SETUP-GUIDE.md        # setup and operations
+│   ├── MODULE-GUIDE.md       # module contract
+│   └── KANIDM-CLI.md         # Kanidm administration
 └── AGENTS.md
 ```
 
 ## Documentation
 
-- [Installer une infrastructure de A à Z](docs/SETUP-GUIDE.md)
-- [Écrire ou maintenir un module](docs/MODULE-GUIDE.md)
-- [Administrer les comptes et groupes Kanidm](docs/KANIDM-CLI.md)
-- [Comprendre le dépôt privé généré](template/README.md)
+- [Set up a deployment](docs/SETUP-GUIDE.md)
+- [Write or maintain a module](docs/MODULE-GUIDE.md)
+- [Manage Kanidm accounts and groups](docs/KANIDM-CLI.md)
+- [Configure the generated private repository](template/README.md)
 
-## Développer et vérifier
+## Development and checks
 
-Un module public doit rester propriétaire de toutes ses intégrations. Le
-[MODULE-GUIDE](docs/MODULE-GUIDE.md) fournit le squelette, les règles de portée
-et la checklist réseau, secrets, ingress, backup, métriques, dashboard et SSO.
+A public module owns all integrations for its service. The
+[module guide](docs/MODULE-GUIDE.md) provides the module skeleton, scope rules,
+and checks for networking, secrets, ingress, backups, metrics, dashboards, and
+SSO.
 
 ```sh
-# Dépôt public
+# Public repository
 nix flake check --all-systems
 
-# Dépôt privé, depuis nix develop
+# Private repository, from nix develop
 check-project
 ```
 
-Après une modification de déploiement, une évaluation réussie doit être suivie
-d'un canari réel avant `deploy-project` sur toute la flotte.
+After a deployment change passes evaluation, deploy it to one canary before
+running `deploy-project` for the full fleet.
