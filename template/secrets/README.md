@@ -1,18 +1,18 @@
-# Secrets chiffrés
+# Encrypted secrets
 
-Ce dossier contient uniquement les valeurs JSON chiffrées par SOPS. Les
-déclarations `sops.secrets`, chemins runtime, propriétaires et permissions
-restent dans le module public ou privé qui consomme chaque secret.
+This directory contains only JSON values encrypted with SOPS. The
+`sops.secrets` declarations, runtime paths, owners, and permissions remain in
+the public or private module that consumes each secret.
 
 ```sh
-init-project             # crée les fichiers absents et liste les champs externes
-sops secrets/acme.json   # édite sans laisser de copie claire dans le dépôt
-update-sops-keys         # met à jour les destinataires de tous les JSON
-check-project            # refuse CHANGEME puis évalue Nix et Colmena
+init-project             # create missing files and list external fields
+sops secrets/acme.json   # edit without leaving a plaintext copy in the repository
+update-sops-keys         # update recipients for all JSON files
+check-project            # reject CHANGEME values, then evaluate Nix and Colmena
 ```
 
-`init-project` ne remplace jamais un fichier existant. Commitez `.sops.yaml` et
-les JSON re-chiffrés ensemble après tout changement de destinataires.
+`init-project` never replaces an existing file. Commit `.sops.yaml` and the
+re-encrypted JSON files together after any recipient change.
 
-Guide complet :
+Complete guide:
 https://github.com/theking90000/server-setup/blob/main/docs/SETUP-GUIDE.md

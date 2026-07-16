@@ -1,24 +1,24 @@
-# Mon infrastructure privée
+# My private infrastructure
 
-Ce dépôt déploie une flotte NixOS avec Colmena et les modules publics
-`server-setup`. Il contient la topologie réelle, les choix fonctionnels et les
-secrets JSON chiffrés par SOPS.
+This repository deploys a NixOS fleet with Colmena and the public
+`server-setup` modules. It contains the actual topology, functional choices,
+and JSON secrets encrypted with SOPS.
 
-Le guide complet est disponible dans le dépôt public :
-[installation de A à Z](https://github.com/theking90000/server-setup/blob/main/docs/SETUP-GUIDE.md).
+The complete guide is available in the public repository:
+[setup from start to finish](https://github.com/theking90000/server-setup/blob/main/docs/SETUP-GUIDE.md).
 
-## Premier déploiement
+## First deployment
 
-1. Remplacez tous les `CHANGEME` de `inventory/nodes.nix`, puis uniquement ceux
-   des services dont un tag est activé dans la flotte. Les fichiers `config/`
-   des services absents peuvent rester importés et inchangés.
-2. Chargez les outils :
+1. Replace every `CHANGEME` value in `inventory/nodes.nix`, then replace only
+   those for services whose tag is enabled in the fleet. Files under `config/`
+   for absent services can remain imported and unchanged.
+2. Load the tools:
 
    ```sh
    nix develop
    ```
 
-3. Infectez chaque serveur Debian neuf :
+3. Infect each fresh Debian server:
 
    ```sh
    infect-server \
@@ -28,20 +28,20 @@ Le guide complet est disponible dans le dépôt public :
      debian@203.0.113.10
    ```
 
-4. Préparez le dépôt :
+4. Prepare the repository:
 
    ```sh
    init-project
    ```
 
-5. Éditez seulement les fichiers et champs signalés :
+5. Edit only the reported files and fields:
 
    ```sh
    sops secrets/acme.json
    sops secrets/restic.json
    ```
 
-6. Vérifiez et déployez d'abord un canari :
+6. Check the configuration and deploy a canary first:
 
    ```sh
    check-project
@@ -49,79 +49,80 @@ Le guide complet est disponible dans le dépôt public :
    deploy-project
    ```
 
-`init-project` récupère le hardware et les clés SSH hôtes, génère les clés
-WireGuard et cert-syncer, maintient `.sops.yaml`, puis crée uniquement les
-secrets standards absents. Il ne remplace jamais un secret existant.
+`init-project` fetches the hardware configuration and host SSH keys, generates
+the WireGuard and cert-syncer keys, maintains `.sops.yaml`, then creates only
+the missing standard secrets. It never replaces an existing secret.
 
-## Où modifier quoi
+## What to change where
 
-| Chemin | Contenu |
+| Path | Contents |
 |---|---|
-| `inventory/nodes.nix` | Nœuds, IP, SSH et tags |
-| `config/` | URLs, ports et feature flags non secrets |
-| `secrets/` | Valeurs finales chiffrées par SOPS |
-| `inventory/hardware/` | Hardware NixOS récupéré par `init-project` |
-| `modules/` | Éventuels modules propres à ce projet |
-| `flake.nix` | Assemblage Colmena et imports |
+| `inventory/nodes.nix` | Nodes, IP addresses, SSH settings, and tags |
+| `config/` | Non-secret URLs, ports, and feature flags |
+| `secrets/` | Final values encrypted with SOPS |
+| `inventory/hardware/` | NixOS hardware configuration fetched by `init-project` |
+| `modules/` | Optional modules specific to this project |
+| `flake.nix` | Colmena assembly and imports |
 
-Règles :
+Rules:
 
-- ne placez jamais de secret, `sops.secrets`, `/run/secrets` ou
-  `deployment.keys` dans `config/` ;
-- ne créez pas de copie claire d'un JSON : utilisez `sops <fichier>` ;
-- le câblage SOPS standard appartient déjà au module public du service ;
-- un module privé reste responsable de ses propres secrets et unités systemd ;
-- une configuration de service inactive n'est pas évaluée, mais son fichier
-  doit rester du Nix syntaxiquement valide ;
-- les clés privées sous `inventory/keys/` et `inventory/wireguard/` sont
-  ignorées par Git et doivent être sauvegardées séparément.
+- never put a secret, `sops.secrets`, `/run/secrets`, or `deployment.keys` in
+  `config/`;
+- never create a plaintext copy of a JSON file: use `sops <file>`;
+- the service's public module already owns the standard SOPS wiring;
+- a private module remains responsible for its own secrets and systemd units;
+- inactive service configuration is not evaluated, but its file must still
+  contain valid Nix syntax;
+- private keys under `inventory/keys/` and `inventory/wireguard/` are ignored
+  by Git and must be backed up separately.
 
-## Commandes courantes
+## Common commands
 
-| Commande | Usage |
+| Command | Usage |
 |---|---|
-| `init-project` | Préparer ou compléter le dépôt sans écraser l'existant |
-| `update-sops-keys` | Recalculer les destinataires après un changement de nœud |
-| `check-project` | Vérifier secrets actifs, séparation config/secrets, Nix et Colmena |
-| `deploy-project <hôte>` | Initialiser, vérifier et déployer un canari |
-| `deploy-project` | Initialiser, vérifier et déployer toute la flotte |
-| `infect-server` | Installer NixOS sur un serveur Debian neuf |
-| `adopt-hardware` | Récupérer le hardware sans exécuter toute l'initialisation |
-| `generate-mesh` | Générer les clés WireGuard absentes |
+| `init-project` | Prepare or complete the repository without overwriting existing files |
+| `update-sops-keys` | Recompute recipients after a node change |
+| `check-project` | Check active secrets, config/secret separation, Nix, and Colmena |
+| `deploy-project <host>` | Initialize, check, and deploy a canary |
+| `deploy-project` | Initialize, check, and deploy the entire fleet |
+| `infect-server` | Install NixOS on a fresh Debian server |
+| `adopt-hardware` | Fetch hardware configuration without running the full initialization |
+| `generate-mesh` | Generate missing WireGuard keys |
 
-## Ajouter un nœud
+## Adding a node
 
-1. Ajoutez-le dans `inventory/nodes.nix` avec une `vpnIp` unique.
-2. Infectez le serveur.
-3. Lancez `init-project` pour ajouter sa clé hôte aux destinataires SOPS.
-4. Déployez avec `deploy-project <hôte>`, puis la flotte.
+1. Add it to `inventory/nodes.nix` with a unique `vpnIp`.
+2. Infect the server.
+3. Run `init-project` to add its host key to the SOPS recipients.
+4. Deploy with `deploy-project <host>`, then deploy the fleet.
 
-## Retirer un nœud
+## Removing a node
 
-1. Sauvegardez ses données, puis retirez-le de `inventory/nodes.nix`.
-2. Lancez `update-sops-keys`.
-3. Commitez `.sops.yaml` et tous les JSON re-chiffrés ensemble.
-4. Lancez `check-project`.
+1. Back up its data, then remove it from `inventory/nodes.nix`.
+2. Run `update-sops-keys`.
+3. Commit `.sops.yaml` and all re-encrypted JSON files together.
+4. Run `check-project`.
 
-## Ajouter un service
+## Adding a service
 
-1. Ajoutez son tag au nœud choisi.
-2. Renseignez ses options non secrètes dans `config/<service>/`.
-3. Préparez son DNS public si nécessaire.
-4. Lancez `init-project`, puis complétez les champs chiffrés signalés.
-5. Vérifiez et déployez un canari.
+1. Add its tag to the selected node.
+2. Set its non-secret options under `config/<service>/`.
+3. Prepare its public DNS record if required.
+4. Run `init-project`, then fill in the reported encrypted fields.
+5. Check the configuration and deploy a canary.
 
-Pour créer un nouveau module, suivez le
-[guide des modules](https://github.com/theking90000/server-setup/blob/main/docs/MODULE-GUIDE.md).
-Pour les comptes et groupes SSO, utilisez le
-[guide Kanidm](https://github.com/theking90000/server-setup/blob/main/docs/KANIDM-CLI.md).
+To create a new module, follow the
+[module guide](https://github.com/theking90000/server-setup/blob/main/docs/MODULE-GUIDE.md).
+For SSO accounts and groups, use the
+[Kanidm guide](https://github.com/theking90000/server-setup/blob/main/docs/KANIDM-CLI.md).
 
-## Avant chaque push
+## Before each push
 
 ```sh
 check-project
 git status
 ```
 
-Les fichiers `.sops.yaml`, `secrets/*.json`, `inventory/hardware/`, `config/`,
-`inventory/nodes.nix` et `flake.lock` font normalement partie du dépôt privé.
+The `.sops.yaml`, `secrets/*.json`, `inventory/hardware/`, `config/`,
+`inventory/nodes.nix`, and `flake.lock` files normally belong in the private
+repository.

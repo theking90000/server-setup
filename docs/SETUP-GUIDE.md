@@ -1,67 +1,70 @@
-# Installer une infrastructure de A à Z
+# Setting up an infrastructure from start to finish
 
-Ce guide part d'un poste qui possède Nix et d'un ou plusieurs serveurs Debian
-neufs. Il mène à une flotte NixOS vérifiée et déployée avec Colmena, WireGuard,
-SOPS et les modules publics `server-setup`.
+This guide starts with a workstation that has Nix and one or more fresh Debian
+servers. It produces a checked NixOS fleet deployed with Colmena, WireGuard,
+SOPS, and the public `server-setup` modules.
 
-> **Attention :** `infect-server` remplace le système du serveur. Utilisez-le
-> uniquement sur une machine neuve ou sauvegardée. L'adresse IP, le port SSH et
-> la clé d'accès doivent être vérifiés avant de lancer la commande.
+> **Warning:** `infect-server` replaces the server's operating system. Use it
+> only on a new or backed-up machine. Check the IP address, SSH port, and access
+> key before running the command.
 
-## 1. Ce qui vit dans chaque dépôt
+## 1. What belongs in each repository
 
-Le dépôt public contient le fonctionnement réutilisable : modules NixOS,
-scripts et template. Votre dépôt privé contient uniquement :
+The public repository contains the reusable NixOS modules, scripts, and
+template. Your private repository contains only:
 
-- `inventory/nodes.nix` : topologie, tags et paramètres SSH ;
-- `config/` : URLs et choix fonctionnels ;
-- `secrets/` : JSON chiffrés par SOPS ;
-- les configurations matérielles récupérées sur les machines ;
-- les éventuels modules propres à cette infrastructure.
+- `inventory/nodes.nix`: topology, tags, and SSH settings;
+- `config/`: URLs and functional choices;
+- `secrets/`: JSON files encrypted with SOPS;
+- hardware configuration fetched from the machines;
+- optional modules specific to this infrastructure.
 
-SOPS est intégré à `infra.nixosModules.default`. Chaque module public déclare
-ses propres secrets ; le dépôt privé ne recopie aucun adaptateur central.
+SOPS is integrated into `infra.nixosModules.default`. Each public module
+declares its own secrets; the private repository does not duplicate a central
+adapter.
 
-## 2. Prérequis
+## 2. Requirements
 
-Sur le poste d'administration :
+On the administration workstation:
 
-- Nix avec `nix-command` et `flakes` activés ;
-- une clé SSH Ed25519 permettant d'accéder aux serveurs ;
-- Git ;
-- un accès au compte qui gère la zone DNS ;
-- des credentials pour le stockage Restic ou Rclone si ces rôles sont activés.
+- Nix with `nix-command` and `flakes` enabled;
+- an Ed25519 SSH key that can access the servers;
+- Git;
+- access to the account that manages the DNS zone;
+- credentials for Restic or Rclone storage if those roles are enabled.
 
-Installez Nix depuis la [page officielle](https://nixos.org/download/) et
-validez l'accès au flake :
+Install Nix from the [official page](https://nixos.org/download/) and check
+access to the flake:
 
 ```sh
 nix flake show github:theking90000/server-setup
 ```
 
-Pour chaque serveur, relevez : IPv4 publique, IPv6 et passerelle éventuelles,
-interface réseau publique, utilisateur Debian, port SSH initial et clé SSH.
+For each server, record its public IPv4 address, optional IPv6 address and
+gateway, public network interface, Debian user, initial SSH port, and SSH key.
 
-## 3. Créer le dépôt privé
+## 3. Creating the private repository
 
-Une seule commande copie le template, initialise Git et crée le premier commit :
+One command copies the template, initializes Git, and creates the first commit:
 
 ```sh
 nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
 cd ./my-infra
 ```
 
-Si le commit initial échoue parce que Git n'a pas encore d'identité, les
-fichiers sont déjà copiés. Configurez `user.name` et `user.email`, puis terminez
-dans le dossier créé avec `git add -A && git commit -m "Initial commit"`.
+If the initial commit fails because Git does not have an identity yet, the
+files have already been copied. Configure `user.name` and `user.email`, then
+finish in the created directory with
+`git add -A && git commit -m "Initial commit"`.
 
-Créez ensuite un dépôt Git **privé** chez votre hébergeur. Ne publiez jamais ce
-dépôt, même si les fichiers SOPS sont chiffrés : sa topologie reste sensible.
+Then create a **private** Git repository with your hosting provider. Never
+publish this repository, even though the SOPS files are encrypted: its topology
+is still sensitive.
 
-## 4. Décrire les nœuds
+## 4. Describing the nodes
 
-Éditez `inventory/nodes.nix`. Chaque nom d'attribut devient le nom du nœud
-Colmena et son hostname NixOS.
+Edit `inventory/nodes.nix`. Each attribute name becomes the Colmena node name
+and its NixOS hostname.
 
 ```nix
 {
@@ -84,48 +87,46 @@ Colmena et son hostname NixOS.
 }
 ```
 
-| Champ | Choix |
+| Field | Value |
 |---|---|
-| `publicIp` | IPv4 joignable par SSH et Colmena |
-| `vpnIp` | Adresse privée unique du mesh, par exemple `10.100.0.x` |
-| `ipv6`, `ipv6Gateway` | Valeurs fournisseur, ou `null` si inutilisées |
-| `publicInterface` | Interface réelle : `ens3`, `eth0`, `enp1s0`, etc. |
-| `useDHCP` | `true` si le fournisseur configure l'IPv4 par DHCP |
-| `sshKey` | Clé privée locale utilisée pour root après infection |
-| `sshPort` | Port SSH **final** NixOS, identique à `--post-port` |
-| `tags` | Services activés sur ce nœud |
+| `publicIp` | IPv4 address reachable by SSH and Colmena |
+| `vpnIp` | Unique private mesh address, for example `10.100.0.x` |
+| `ipv6`, `ipv6Gateway` | Provider values, or `null` when unused |
+| `publicInterface` | Actual interface: `ens3`, `eth0`, `enp1s0`, etc. |
+| `useDHCP` | `true` when the provider configures IPv4 through DHCP |
+| `sshKey` | Local private key used for root access after infection |
+| `sshPort` | **Final** NixOS SSH port, identical to `--post-port` |
+| `tags` | Services enabled on this node |
 
-Les `vpnIp` doivent être uniques. Un tag inconnu est volontairement refusé à
-l'évaluation afin de détecter les fautes de frappe.
+Every `vpnIp` must be unique. Evaluation intentionally rejects unknown tags to
+catch typing errors.
 
-### Tags courants
+### Common tags
 
-| Tag | Fonction |
+| Tag | Function |
 |---|---|
-| `web-server` | Nginx public et ingress HTTPS |
-| `acme-issuer` | Émission DNS-01 et distribution des certificats |
+| `web-server` | Public Nginx and HTTPS ingress |
+| `acme-issuer` | DNS-01 issuance and certificate distribution |
 | `node-metrics` | Node Exporter |
-| `prometheus` | Collecte des métriques |
-| `grafana` | Visualisation et dashboards |
-| `backup` | Sauvegarde Restic des chemins déclarés |
-| `kanidm` | Identité et SSO |
-| `applications/gitea` | Forge Git |
-| `applications/docker-registry` | Registre OCI privé |
-| `applications/jellyfin` | Serveur multimédia |
+| `prometheus` | Metrics collection |
+| `grafana` | Visualization and dashboards |
+| `backup` | Restic backup of registered paths |
+| `kanidm` | Identity and SSO |
+| `applications/gitea` | Git forge |
+| `applications/docker-registry` | Private OCI registry |
+| `applications/jellyfin` | Media server |
 | `applications/ntfy` | Notifications |
-| `applications/filesave-server` | Partage de fichiers |
-| `applications/reposilite` | Dépôt Maven |
-| `applications/www` | Site statique |
-| `raspberry-pi` | Modules matériels Raspberry Pi 5 du template |
+| `applications/filesave-server` | File sharing |
+| `applications/reposilite` | Maven repository |
+| `applications/www` | Static website |
+| `raspberry-pi` | Raspberry Pi 5 hardware modules from the template |
 
-Rclone ne possède pas de tag : chaque montage nomme directement ses
-`targetNodes`.
+Rclone has no tag: each mount directly names its `targetNodes`.
 
-## 5. Choisir les services et préparer le DNS
+## 5. Selecting services and preparing DNS
 
-Éditez uniquement les fichiers des services dont un tag est activé dans la
-flotte. `config/` ne doit contenir que des valeurs non secrètes : URL, port ou
-fonctionnalité.
+Edit only files for services whose tag is enabled in the fleet. `config/` must
+contain only non-secret values: URLs, ports, or features.
 
 ```nix
 {
@@ -136,24 +137,23 @@ fonctionnalité.
 }
 ```
 
-Remplacez les `CHANGEME` des services activés. Un fichier de configuration peut
-rester importé et inchangé si son tag n'est utilisé sur aucun nœud : ses valeurs
-ne sont alors pas évaluées. Une erreur de syntaxe Nix reste toujours bloquante,
-car tout fichier importé doit pouvoir être parsé.
+Replace the `CHANGEME` values for enabled services. A configuration file can
+remain imported and unchanged if no node uses its tag: its values are not
+evaluated in that case. A Nix syntax error is always fatal because every
+imported file must be parseable.
 
-Pour chaque URL publique, créez dans votre zone DNS :
+For each public URL, create the following records in your DNS zone:
 
-- un enregistrement `A` vers l'IPv4 du nœud `web-server` ;
-- un enregistrement `AAAA` vers son IPv6 si l'IPv6 est réellement routée ;
-- aucun enregistrement vers l'IP WireGuard.
+- an `A` record pointing to the IPv4 address of the `web-server` node;
+- an `AAAA` record pointing to its IPv6 address if IPv6 is actually routed;
+- no record pointing to the WireGuard IP address.
 
-Tous les services publics arrivent sur Nginx. Nginx rejoint ensuite les
-applications par le mesh WireGuard et déduit automatiquement les domaines ACME
-depuis les ingress.
+All public services enter through Nginx. Nginx then reaches applications over
+the WireGuard mesh and automatically derives ACME domains from ingresses.
 
-### Credentials OVH pour Lego/ACME
+### OVH credentials for Lego/ACME
 
-Le template utilise le provider DNS `ovh`. Configurez l'email ACME :
+The template uses the `ovh` DNS provider. Configure the ACME email address:
 
 ```nix
 {
@@ -164,9 +164,9 @@ Le template utilise le provider DNS `ovh`. Configurez l'email ACME :
 }
 ```
 
-Créez des credentials OVH dédiés depuis la
-[page de création de token OVH](https://www.ovh.com/auth/api/createToken). Pour
-l'authentification Application Key, Lego attend :
+Create dedicated OVH credentials on the
+[OVH token creation page](https://www.ovh.com/auth/api/createToken). For
+Application Key authentication, Lego expects:
 
 ```text
 OVH_ENDPOINT=ovh-eu
@@ -175,35 +175,34 @@ OVH_APPLICATION_SECRET=...
 OVH_CONSUMER_KEY=...
 ```
 
-Le Consumer Key doit au minimum pouvoir créer et supprimer les enregistrements
-de la zone (`POST /domain/zone/*` et `DELETE /domain/zone/*`). Utilisez
-`ovh-ca` au lieu de `ovh-eu` pour un compte canadien. Ne mélangez pas cette
-méthode avec les credentials OAuth OVH. La liste officielle et les politiques
-IAM alternatives sont documentées par
+The Consumer Key must at least be allowed to create and delete records in the
+zone (`POST /domain/zone/*` and `DELETE /domain/zone/*`). Use `ovh-ca` instead
+of `ovh-eu` for a Canadian account. Do not mix this method with OVH OAuth
+credentials. The official list and alternative IAM policies are documented by
 [Lego](https://go-acme.github.io/lego/dns/ovh/).
 
-Ces valeurs ne vont jamais dans `config/acme/acme.nix`. Elles seront saisies
-dans `secrets/acme.json` après l'initialisation.
+These values never go in `config/acme/acme.nix`. You will enter them in
+`secrets/acme.json` after initialization.
 
-## 6. Entrer dans l'environnement
+## 6. Entering the environment
 
 ```sh
 nix develop
 ```
 
-Le dev shell fournit Colmena, SOPS, WireGuard et tous les scripts du projet. Si
-vous utilisez `direnv`, le `.envrc` fourni contient déjà `use flake` ; autorisez
-le dossier avec `direnv allow`.
+The development shell provides Colmena, SOPS, WireGuard, and all project
+scripts. If you use `direnv`, the provided `.envrc` already contains
+`use flake`; authorize the directory with `direnv allow`.
 
-## 7. Infecter les serveurs
+## 7. Infecting the servers
 
-Vérifiez d'abord manuellement l'accès Debian :
+First check Debian access manually:
 
 ```sh
 ssh -i ~/.ssh/id_ed25519 -p 22 debian@203.0.113.10
 ```
 
-Puis lancez l'infection pour chaque machine :
+Then run the infection for each machine:
 
 ```sh
 infect-server \
@@ -213,61 +212,60 @@ infect-server \
   debian@203.0.113.10
 ```
 
-- `-p` est le port SSH du système Debian initial ;
-- `--post-port` est le port NixOS final renseigné dans `nodes.nix` ;
-- l'utilisateur initial peut être `debian`, `ubuntu` ou `root`, avec `sudo` si
-  nécessaire ;
-- après infection, les scripts et Colmena se connectent en `root`.
+- `-p` is the SSH port of the initial Debian system;
+- `--post-port` is the final NixOS port set in `nodes.nix`;
+- the initial user can be `debian`, `ubuntu`, or `root`, with `sudo` when
+  required;
+- after infection, the scripts and Colmena connect as `root`.
 
-Le script installe la clé publique avant le reboot, épingle et vérifie le hash
-de `nixos-infect`, puis attend le retour de SSH. Si l'hôte est déjà NixOS, il ne
-le réinfecte pas.
+The script installs the public key before rebooting, pins and checks the
+`nixos-infect` hash, then waits for SSH to return. If the host already runs
+NixOS, it does not infect it again.
 
-## 8. Initialiser le projet
+## 8. Initializing the project
 
-Une commande prépare tout ce qui peut l'être :
+One command prepares everything it can:
 
 ```sh
 init-project
 ```
 
-Elle effectue de manière idempotente :
+It performs the following steps idempotently:
 
-1. la génération des paires WireGuard absentes ;
-2. la récupération des configurations matérielles ;
-3. l'export des clés SSH publiques d'administration ;
-4. la génération de la paire cert-syncer ;
-5. la création ou mise à jour de l'identité Age administrateur ;
-6. la lecture authentifiée de la clé SSH hôte de chaque serveur ;
-7. la génération de `.sops.yaml` et le re-chiffrement transactionnel des
-   fichiers existants si les destinataires ont changé ;
-8. la création des fichiers de secrets standards absents.
+1. generates missing WireGuard key pairs;
+2. fetches hardware configuration;
+3. exports administration SSH public keys;
+4. generates the cert-syncer key pair;
+5. creates or updates the administrator Age identity;
+6. reads each server's host SSH key through an authenticated connection;
+7. generates `.sops.yaml` and transactionally re-encrypts existing files when
+   recipients have changed;
+8. creates missing standard secret files.
 
-Un secret existant n'est jamais remplacé. Si une clé hôte ou un re-chiffrement
-échoue, `update-sops-keys` ne remplace ni l'ancienne configuration ni les
-anciens fichiers.
+An existing secret is never replaced. If a host key cannot be read or
+re-encryption fails, `update-sops-keys` replaces neither the old configuration
+nor the old files.
 
-### Identité Age administrateur
+### Administrator Age identity
 
-Le chemin par défaut suit la convention SOPS :
+The default path follows the SOPS convention:
 
-| Système | Chemin |
+| System | Path |
 |---|---|
 | macOS | `~/Library/Application Support/sops/age/keys.txt` |
 | Linux | `${XDG_CONFIG_HOME:-~/.config}/sops/age/keys.txt` |
 
-Le fichier est créé en mode `0600`. Sauvegardez-le dans un coffre sûr : il
-permet d'administrer tous les secrets du projet. Pour un chemin différent,
-exportez `SOPS_AGE_KEY_FILE` avant d'utiliser les scripts.
+The file is created with mode `0600`. Back it up in a secure vault: it can
+administer every project secret. To use a different path, export
+`SOPS_AGE_KEY_FILE` before using the scripts.
 
-La politique actuelle reste volontairement simple : l'identité administrateur
-et les clés SSH hôtes de **tous** les nœuds sont destinataires de **tous** les
-fichiers SOPS.
+The current policy is deliberately simple: the administrator identity and the
+host SSH keys of **all** nodes are recipients of **all** SOPS files.
 
-## 9. Compléter les secrets externes
+## 9. Completing external secrets
 
-À la fin, `init-project` affiche exactement chaque fichier et champ contenant
-encore `CHANGEME`. Éditez-les avec SOPS :
+At the end, `init-project` prints the exact file and field for every remaining
+`CHANGEME` value. Edit them with SOPS:
 
 ```sh
 sops secrets/acme.json
@@ -276,218 +274,216 @@ sops secrets/docker-registry.json
 sops secrets/rclone-sync.json
 ```
 
-N'utilisez pas un éditeur qui écrit une copie claire dans le dépôt. `sops`
-déchiffre dans un temporaire protégé puis réécrit le fichier chiffré.
+Do not use an editor that writes a plaintext copy into the repository. `sops`
+decrypts into a protected temporary file, then writes the encrypted file again.
 
-| Fichier | Champ | Origine |
+| File | Field | Source |
 |---|---|---|
-| `wireguard/<hôte>.json` | `privateKey` | Généré automatiquement |
-| `acme.json` | `dnsCredentials` | Credentials OVH/Lego à fournir |
-| `acme-syncer.json` | `privateKey` | Généré si plusieurs nœuds |
-| `restic.json` | `repository` | URL du repository à fournir |
-| `restic.json` | `password` | Généré automatiquement |
-| `restic.json` | `env` | Credentials du backend à fournir |
-| `grafana.json` | `password`, `grafana_secret` | Générés automatiquement |
-| `grafana.json` | `oidc_client_secret` | Généré si Grafana est actif |
-| `gitea.json` | `oidc_client_secret` | Généré si Gitea + Kanidm sont actifs |
-| `kanidm.json` | `idm_admin_password` | Généré si un client SSO est actif |
-| `docker-registry.json` | `accounts` | Contenu htpasswd à fournir |
-| `rclone-sync.json` | clé portant le nom du montage | `rclone.conf` complet à fournir |
+| `wireguard/<host>.json` | `privateKey` | Generated automatically |
+| `acme.json` | `dnsCredentials` | OVH/Lego credentials to provide |
+| `acme-syncer.json` | `privateKey` | Generated when several nodes exist |
+| `restic.json` | `repository` | Repository URL to provide |
+| `restic.json` | `password` | Generated automatically |
+| `restic.json` | `env` | Backend credentials to provide |
+| `grafana.json` | `password`, `grafana_secret` | Generated automatically |
+| `grafana.json` | `oidc_client_secret` | Generated when Grafana is active |
+| `gitea.json` | `oidc_client_secret` | Generated when Gitea and Kanidm are active |
+| `kanidm.json` | `idm_admin_password` | Generated when an SSO client is active |
+| `docker-registry.json` | `accounts` | htpasswd contents to provide |
+| `rclone-sync.json` | key named after the mount | Complete `rclone.conf` to provide |
 
-Pour le registre, générez une ligne htpasswd bcrypt sans installer durablement
-un outil :
+For the registry, generate a bcrypt htpasswd line without permanently
+installing a tool:
 
 ```sh
-nix shell nixpkgs#apacheHttpd -c htpasswd -Bbn mon-utilisateur
+nix shell nixpkgs#apacheHttpd -c htpasswd -Bbn my-user
 ```
 
-Copiez la ligne produite dans le champ `accounts` avec `sops`. Pour Restic,
-`repository` est par exemple une URL `s3:...`; `env` contient les variables
-requises par ce backend, une par ligne. Pour Rclone, la valeur du champ est le
-contenu complet d'une configuration fonctionnelle, y compris ses sections
-`remote` et éventuelle `crypt`.
+Copy the generated line into the `accounts` field with `sops`. For Restic,
+`repository` is, for example, an `s3:...` URL; `env` contains the variables
+required by that backend, one per line. For Rclone, the field value is the
+complete contents of a working configuration, including its `remote` section
+and optional `crypt` section.
 
-## 10. Vérifier puis déployer
+## 10. Checking and deploying
 
 ```sh
 check-project
 ```
 
-La commande :
+The command:
 
-- refuse tout `CHANGEME` dans les valeurs déchiffrées sans les afficher ;
-- refuse le câblage de secrets dans `config/` ;
-- lance `nix flake check --all-systems` ;
-- évalue le `drvPath` de tous les nœuds Colmena.
+- rejects any `CHANGEME` in decrypted values without printing those values;
+- rejects secret wiring under `config/`;
+- runs `nix flake check --all-systems`;
+- evaluates the `drvPath` of every Colmena node.
 
-Déployez d'abord un nœud canari :
+Deploy one canary node first:
 
 ```sh
 deploy-project vps1
 ```
 
-`deploy-project` relance l'initialisation et les vérifications avant
-`colmena apply --on vps1`. Une fois le canari vérifié, déployez toute la flotte :
+`deploy-project` runs initialization and checks again before
+`colmena apply --on vps1`. After checking the canary, deploy the full fleet:
 
 ```sh
 deploy-project
 ```
 
-Sur le canari, contrôlez au minimum :
+On the canary, check at least:
 
 ```sh
 ssh root@203.0.113.10 systemctl --failed
 ssh root@203.0.113.10 systemctl status wireguard-wg0
 ```
 
-Testez ensuite les URLs publiques, les certificats, les métriques, les backups
-et le SSO correspondant aux tags réellement activés.
+Then test the public URLs, certificates, metrics, backups, and SSO associated
+with the tags that are actually enabled.
 
-## 11. Parcours minimal « trois minutes »
+## 11. Minimal three-minute path
 
-Le temps réseau, l'infection et l'obtention des credentials fournisseurs sont
-hors mesure. Une personne qui dispose déjà de ces éléments suit seulement :
+Network time, infection, and obtaining provider credentials are excluded. A
+person who already has these elements only needs to run:
 
 ```sh
 nix run github:theking90000/server-setup#bootstrap-project -- ./my-infra
 cd ./my-infra
-# éditer inventory/nodes.nix et la config des services activés
+# edit inventory/nodes.nix and the configuration of enabled services
 nix develop
-# infect-server ... pour chaque machine
+# infect-server ... for each machine
 init-project
-# sops <chaque fichier signalé>
+# sops <each reported file>
 deploy-project vps1
 deploy-project
 ```
 
-Il n'y a ni `justfile`, ni manifeste de secrets à maintenir, ni adaptateur SOPS
-à recopier.
+There is no `justfile`, secret manifest to maintain, or SOPS adapter to copy.
 
-## 12. Opérations courantes
+## 12. Routine operations
 
-### Ajouter un nœud
+### Adding a node
 
-1. Ajoutez le nœud et ses tags dans `inventory/nodes.nix`.
-2. Infectez-le.
-3. Lancez `init-project` : la nouvelle clé hôte est ajoutée aux destinataires et
-   les fichiers sont re-chiffrés dans une zone temporaire.
-4. Complétez les éventuels nouveaux placeholders.
-5. Lancez `deploy-project <nouvel-hôte>`, puis `deploy-project`.
+1. Add the node and its tags to `inventory/nodes.nix`.
+2. Infect it.
+3. Run `init-project`: the new host key is added to the recipients and the
+   files are re-encrypted in a temporary area.
+4. Complete any new placeholders.
+5. Run `deploy-project <new-host>`, then `deploy-project`.
 
-### Retirer un nœud
+### Removing a node
 
-1. Retirez-le de `inventory/nodes.nix` après avoir sauvegardé les données utiles.
-2. Lancez `update-sops-keys` pour retirer son destinataire de tous les fichiers.
-3. Vérifiez le diff chiffré, puis lancez `check-project`.
+1. Remove it from `inventory/nodes.nix` after backing up useful data.
+2. Run `update-sops-keys` to remove its recipient from every file.
+3. Review the encrypted diff, then run `check-project`.
 
-Retirer un destinataire SOPS empêche l'usage futur de sa clé pour les nouvelles
-versions des fichiers ; cela n'efface pas les anciennes copies qu'il aurait pu
-conserver.
+Removing a SOPS recipient prevents its key from being used for new versions of
+the files; it does not erase old copies that the recipient may have retained.
 
-### Ajouter un service public existant
+### Adding an existing public service
 
-1. Ajoutez son tag au bon nœud.
-2. Renseignez ses options non secrètes dans `config/<service>/`.
-3. Préparez DNS si une URL publique est utilisée.
-4. Lancez `init-project`, éditez les champs signalés, puis `check-project`.
-5. Déployez un canari.
+1. Add its tag to the correct node.
+2. Set its non-secret options in `config/<service>/`.
+3. Prepare DNS if it uses a public URL.
+4. Run `init-project`, edit the reported fields, then run `check-project`.
+5. Deploy a canary.
 
-### Ajouter un module privé
+### Adding a private module
 
-Placez-le dans `modules/`, importez ce dossier dans le flake et gardez dans ce
-module toute sa responsabilité, y compris ses déclarations SOPS. Ne modifiez le
-script public `init-project` que si le secret devient un contrat standard du
-dépôt public ; sinon créez le fichier chiffré une fois avec `sops`.
+Place it under `modules/`, import that directory in the flake, and keep all of
+its responsibilities in the module, including its SOPS declarations. Modify
+the public `init-project` script only when the secret becomes a standard
+contract of the public repository; otherwise, create the encrypted file once
+with `sops`.
 
-### Modifier les destinataires sans autre initialisation
+### Changing recipients without other initialization
 
 ```sh
 update-sops-keys
 ```
 
-Cette commande est suffisante après un ajout, un retrait ou un remplacement de
-clé hôte. Relisez et commitez `.sops.yaml` et les fichiers chiffrés ensemble.
+This command is sufficient after adding, removing, or replacing a host key.
+Review and commit `.sops.yaml` and the encrypted files together.
 
-### Rotation d'un credential
+### Rotating a credential
 
 ```sh
 sops secrets/<service>.json
 check-project
-deploy-project <canari>
+deploy-project <canary>
 ```
 
-Ne supprimez pas le fichier entier : `init-project` recréerait aussi les valeurs
-internes, ce qui provoquerait des rotations supplémentaires.
+Do not delete the entire file: `init-project` would also recreate the internal
+values, causing additional rotations.
 
-## 13. Diagnostic
+## 13. Troubleshooting
 
-### `init-project` refuse encore `CHANGEME`
+### `init-project` still rejects `CHANGEME`
 
-Les placeholders de `inventory/nodes.nix` doivent être remplacés avant toute
-connexion. Après initialisation, la liste restante concerne uniquement les
-credentials externes chiffrés.
+The placeholders in `inventory/nodes.nix` must be replaced before any
+connection. After initialization, the remaining list contains only encrypted
+external credentials.
 
-### Impossible de lire la clé SSH hôte
+### Cannot read the host SSH key
 
-Vérifiez :
+Check:
 
 ```sh
 ssh -i ~/.ssh/id_ed25519 -p 22 root@203.0.113.10 \
   cat /etc/ssh/ssh_host_ed25519_key.pub
 ```
 
-Le `sshKey`, le `sshPort`, l'IPv4 et l'accès root doivent correspondre à
-`inventory/nodes.nix`. N'acceptez pas aveuglément un changement inattendu de
-clé hôte : confirmez qu'il s'agit bien de la machine réinstallée.
+The `sshKey`, `sshPort`, IPv4 address, and root access must match
+`inventory/nodes.nix`. Do not blindly accept an unexpected host key change:
+confirm that it is the reinstalled machine.
 
-### SOPS ne peut pas déchiffrer
+### SOPS cannot decrypt
 
-Vérifiez le chemin et le mode `0600` de l'identité Age. Si
-`SOPS_AGE_KEY_FILE` n'est pas définie, utilisez le chemin standard de votre OS
-indiqué plus haut. Une
-copie valide de la clé Age administrateur est le moyen normal de récupération.
-Sans elle, une clé SSH hôte encore destinataire peut techniquement déchiffrer
-les fichiers sur cet hôte ; traitez cette récupération comme une opération de
-sécurité et sauvegardez d'abord les fichiers chiffrés.
+Check the path and `0600` mode of the Age identity. If `SOPS_AGE_KEY_FILE` is
+not set, use the standard path for your operating system shown above. A valid
+copy of the administrator Age key is the normal recovery method. Without it, a
+host SSH key that is still a recipient can technically decrypt the files on
+that host; treat this recovery as a security operation and back up the
+encrypted files first.
 
-### Le challenge OVH échoue
+### The OVH challenge fails
 
-Vérifiez l'endpoint, les quatre variables, les droits de création/suppression
-DNS et la zone concernée. Consultez les logs sans afficher les credentials :
+Check the endpoint, all four variables, the permission to create and delete DNS
+records, and the relevant zone. Read the logs without printing credentials:
 
 ```sh
 journalctl -u acme-\*.service --since today
 ```
 
-Attendez aussi la propagation DNS avant de conclure à un problème de module.
+Also wait for DNS propagation before concluding that the module is faulty.
 
-### Colmena retourne un échec après activation
+### Colmena reports a failure after activation
 
-Commencez par la cible :
+Start with the target:
 
 ```sh
 ssh root@203.0.113.10 systemctl --failed
 ssh root@203.0.113.10 journalctl -b -p warning
 ```
 
-Une évaluation Nix réussie ne garantit pas qu'un credential externe, un
-endpoint ou une migration applicative fonctionne au runtime.
+A successful Nix evaluation does not guarantee that an external credential,
+endpoint, or application migration works at runtime.
 
-## 14. Ce qui doit être commité
+## 14. What to commit
 
-Commitez ensemble :
+Commit the following together:
 
-- `inventory/nodes.nix` ;
-- `inventory/hardware/` ;
-- `config/` ;
-- `.sops.yaml` ;
-- tous les JSON SOPS chiffrés ;
-- le `flake.lock` après une mise à jour volontaire.
+- `inventory/nodes.nix`;
+- `inventory/hardware/`;
+- `config/`;
+- `.sops.yaml`;
+- all encrypted SOPS JSON files;
+- `flake.lock` after an intentional update.
 
-Les dossiers `inventory/keys/` et `inventory/wireguard/` sont ignorés par le
-template car ils contiennent des clés privées. Sauvegardez-les séparément et de
-manière chiffrée. Vérifiez toujours `git status` avant de pousser.
+The `inventory/keys/` and `inventory/wireguard/` directories are ignored by the
+template because they contain private keys. Back them up separately in
+encrypted storage. Always check `git status` before pushing.
 
-Pour comprendre ou créer un module, continuez avec
-[`MODULE-GUIDE.md`](MODULE-GUIDE.md). Pour administrer Kanidm après le premier
-déploiement, utilisez [`KANIDM-CLI.md`](KANIDM-CLI.md).
+To understand or create a module, continue with
+[`MODULE-GUIDE.md`](MODULE-GUIDE.md). To manage Kanidm after the first
+deployment, use [`KANIDM-CLI.md`](KANIDM-CLI.md).
