@@ -1,18 +1,45 @@
-# Server Setup
+<p align="center">
+  <img src="docs/assets/banner.webp" alt="Server Setup" width="880">
+</p>
 
-This repository provides NixOS modules and commands to deploy a server fleet
-with Colmena. It configures WireGuard, SOPS, Nginx, Restic, Prometheus, Grafana,
-Kanidm, and the applications listed below.
+<p align="center">
+  <em>Infrastructure as code for plain Linux. A robust, deterministic server fleet without the orchestrator.</em>
+</p>
+
+<p align="center">
+  <img alt="NixOS flake" src="https://img.shields.io/badge/NixOS-flake-5277C3?logo=nixos&logoColor=white">
+  <img alt="Deploy: Colmena" src="https://img.shields.io/badge/deploy-Colmena-4A90D9">
+  <img alt="Secrets: SOPS" src="https://img.shields.io/badge/secrets-SOPS-1A7F37?logo=gnuprivacyguard&logoColor=white">
+</p>
+
+Server Setup turns a fleet of fresh Debian machines into a fully declarative
+NixOS deployment. Every server is described in code, reproducible bit for bit,
+and runs on plain systemd, with no container runtime or orchestrator in the way.
+Nodes join a private WireGuard mesh and automatically get HTTPS ingress, single
+sign-on, encrypted secrets, backups and monitoring.
 
 Each deployment uses a separate private repository generated from `template/`.
 That repository contains the node topology, service configuration, encrypted
 secrets, hardware configuration, and deployment-specific modules.
 
-## Quick start
+## Features
+
+- 🧬 **Infrastructure as code**: the entire fleet is declarative and version-controlled
+- 🪨 **Robust & deterministic**: plain systemd on NixOS, reproducible builds
+- 🌐 **Private mesh**: every node joins an encrypted WireGuard network automatically
+- 🚪 **HTTPS ingress**: Nginx with automatic Let's Encrypt certificates
+- 🔐 **Security & SSO**: encrypted secrets (SOPS) and identity via Kanidm (OIDC/LDAPS)
+- 💾 **Backups**: scheduled, deduplicated Restic backups
+- 📊 **Monitoring**: Prometheus metrics and provisioned Grafana dashboards
+
+## 🚀 Quick start
 
 Requirements: Nix, an SSH key, a fresh Debian server, and credentials for the
-enabled external services. `infect-server` replaces the server's current
-operating system.
+enabled external services.
+
+> [!WARNING]
+> `infect-server` **replaces the server's operating system**. Only run it on a
+> machine you intend to wipe.
 
 ```sh
 # Create the private repository
@@ -40,7 +67,7 @@ deploy-project
 The [setup guide](docs/SETUP-GUIDE.md) covers OVH/Lego DNS, server infection,
 SOPS, secrets, checks, deployment, and routine operations.
 
-## How modules configure the fleet
+## 🧩 How modules configure the fleet
 
 Each node has tags. The module that registers a tag:
 
@@ -61,14 +88,37 @@ A file under `config/` can remain imported without configuration while no node
 has its service tag. Its placeholders and values are not evaluated in that
 case. The file must still contain valid Nix syntax.
 
-## Service ownership and private configuration
+## 🔒 Service ownership and private configuration
 
-| Public repository | Private repository |
-|---|---|
-| NixOS modules and SOPS declarations | Node inventory and tags |
-| `services` and `ops` helpers | URLs, ports, and feature flags |
-| Bootstrap and deployment commands | Encrypted SOPS JSON files |
-| Template and synthetic checks | Hardware configuration and deployment-specific modules |
+```mermaid
+flowchart LR
+  subgraph Public["Public repo (this)"]
+    M[NixOS modules]
+    C[Commands]
+  end
+  subgraph Private["Private repo (per deployment)"]
+    I[Inventory & tags]
+    S[Encrypted SOPS secrets]
+    H[Hardware config]
+  end
+  Public --> Private
+  Private -->|colmena deploy| F
+  subgraph F["Fleet"]
+    N1[vps1]
+    N2[vps2]
+    N3[vps3]
+  end
+  N1 <-->|WireGuard mesh| N2
+  N2 <-->|WireGuard mesh| N3
+  N1 <-->|WireGuard mesh| N3
+```
+
+| Public repository                   | Private repository                                     |
+| ----------------------------------- | ------------------------------------------------------ |
+| NixOS modules and SOPS declarations | Node inventory and tags                                |
+| `services` and `ops` helpers        | URLs, ports, and feature flags                         |
+| Bootstrap and deployment commands   | Encrypted SOPS JSON files                              |
+| Template and synthetic checks       | Hardware configuration and deployment-specific modules |
 
 `infra.nixosModules.default` imports `sops-nix`. A private repository does not
 need a separate SOPS module or a central adapter. `grafana.nix` declares both
@@ -87,55 +137,58 @@ infra.acme.certSyncerPublicKeyFile = ./inventory/keys/syncer.key.pub;
 Some modules still expose text and `*File` options for compatibility and tests.
 New deployments use SOPS by default.
 
-## Available roles
+## 📦 Available roles
 
 ### Fleet services
 
-| Tag or activation | Service |
-|---|---|
-| Always enabled | Base networking, OpenSSH, and the WireGuard mesh |
-| `web-server` | Public Nginx and HTTPS ingress |
-| `acme-issuer` | DNS-01 certificates and certificate synchronization |
-| `backup` | Restic backups |
-| `node-metrics` | Node Exporter |
-| `prometheus` | Collection of registered scrape targets |
-| `grafana` | Provisioned data sources and dashboards |
-| `kanidm` | Identity, OIDC/OAuth2, and LDAPS |
-| `infra.rcloneSync.mounts` | Per-node mounts without a tag |
+| Tag or activation         | Service                                             |
+| ------------------------- | --------------------------------------------------- |
+| Always enabled            | Base networking, OpenSSH, and the WireGuard mesh    |
+| `web-server`              | Public Nginx and HTTPS ingress                      |
+| `acme-issuer`             | DNS-01 certificates and certificate synchronization |
+| `backup`                  | Restic backups                                      |
+| `node-metrics`            | Node Exporter                                       |
+| `prometheus`              | Collection of registered scrape targets             |
+| `grafana`                 | Provisioned data sources and dashboards             |
+| `kanidm`                  | Identity, OIDC/OAuth2, and LDAPS                    |
+| `infra.rcloneSync.mounts` | Per-node mounts without a tag                       |
 
 ### Applications
 
-| Tag | Service |
-|---|---|
-| `applications/docker-registry` | Authenticated OCI registry |
-| `applications/filesave-server` | File sharing |
-| `applications/gitea` | Git forge |
-| `applications/jellyfin` | Media server |
-| `applications/ntfy` | Push notifications |
-| `applications/reposilite` | Maven repository |
-| `applications/www` | Static hosting |
-| `applications/sncb-insights` | Application provided by the private repository |
+| Tag                            | Service                                        |
+| ------------------------------ | ---------------------------------------------- |
+| `applications/docker-registry` | Authenticated OCI registry                     |
+| `applications/filesave-server` | File sharing                                   |
+| `applications/gitea`           | Git forge                                      |
+| `applications/jellyfin`        | Media server                                   |
+| `applications/ntfy`            | Push notifications                             |
+| `applications/reposilite`      | Maven repository                               |
+| `applications/www`             | Static hosting                                 |
+| `applications/sncb-insights`   | Application provided by the private repository |
 
-## Development shell commands
+## 🛠️ Development shell commands
 
-| Command | Action |
-|---|---|
-| `bootstrap-project` | Create a private repository from the template |
-| `infect-server` | Replace Debian with NixOS |
-| `init-project` | Create missing hardware configuration, keys, SOPS files, and secrets |
-| `update-sops-keys` | Recompute recipients and re-encrypt staged files |
-| `check-project` | Reject encrypted placeholders, then evaluate Nix and Colmena |
-| `deploy-project [host]` | Initialize, check, and deploy |
-| `adopt-hardware` | Fetch hardware configuration from the nodes |
-| `generate-mesh` | Generate missing WireGuard keys |
-| `export-ssh-key` | Export administration SSH public keys |
-| `generate-key` | Generate the certificate syncer's SSH key pair |
+| Command                 | Action                                                               |
+| ----------------------- | -------------------------------------------------------------------- |
+| `bootstrap-project`     | Create a private repository from the template                        |
+| `infect-server`         | Replace Debian with NixOS                                            |
+| `init-project`          | Create missing hardware configuration, keys, SOPS files, and secrets |
+| `update-sops-keys`      | Recompute recipients and re-encrypt staged files                     |
+| `check-project`         | Reject encrypted placeholders, then evaluate Nix and Colmena         |
+| `deploy-project [host]` | Initialize, check, and deploy                                        |
+| `adopt-hardware`        | Fetch hardware configuration from the nodes                          |
+| `generate-mesh`         | Generate missing WireGuard keys                                      |
+| `export-ssh-key`        | Export administration SSH public keys                                |
+| `generate-key`          | Generate the certificate syncer's SSH key pair                       |
 
 `init-project` and `deploy-project` do not overwrite existing secret files.
 Missing external credentials are created as encrypted `CHANGEME` values and
 reported by path.
 
-## Repository layout
+## 🗂️ Repository layout
+
+<details>
+<summary>Show the repository tree</summary>
 
 ```text
 .
@@ -153,14 +206,16 @@ reported by path.
 └── AGENTS.md
 ```
 
-## Documentation
+</details>
+
+## 📚 Documentation
 
 - [Set up a deployment](docs/SETUP-GUIDE.md)
 - [Write or maintain a module](docs/MODULE-GUIDE.md)
 - [Manage Kanidm accounts and groups](docs/KANIDM-CLI.md)
 - [Configure the generated private repository](template/README.md)
 
-## Development and checks
+## ✅ Development and checks
 
 A public module owns all integrations for its service. The
 [module guide](docs/MODULE-GUIDE.md) provides the module skeleton, scope rules,
