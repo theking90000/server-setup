@@ -13,7 +13,7 @@
 </p>
 
 Server Setup turns a fleet of fresh Debian machines into a fully declarative
-NixOS deployment. Every server is described in code, reproducible bit for bit,
+NixOS deployment. Every server is described in code, reproducible bit for bit,[^repro]
 and runs on plain systemd, with no container runtime or orchestrator in the way.
 Nodes join a private WireGuard mesh and automatically get HTTPS ingress, single
 sign-on, encrypted secrets, backups and monitoring.
@@ -232,3 +232,9 @@ check-project
 
 After a deployment change passes evaluation, deploy it to one canary before
 running `deploy-project` for the full fleet.
+
+[^repro]: Reproducibility covers the system itself: on a fresh install the same
+    configuration rebuilds an identical machine. Runtime user data (databases,
+    uploads, application state) lives outside that guarantee. It is covered
+    separately by Restic backups, and in most cases a healthy backup restores
+    the data in a handful of commands, often a single one.
