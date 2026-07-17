@@ -92,15 +92,18 @@ touch "$INIT_REPO/inventory/nodes.nix" "$INIT_REPO/flake.nix"
 printf 'wireguard-private\n' > "$INIT_REPO/inventory/wireguard/vps1/private.key"
 printf 'syncer-private\n' > "$INIT_REPO/inventory/keys/syncer.key"
 
-BACKUP_NODE='{"nodes":{"vps1":{"publicIp":"192.0.2.1","sshKey":"/tmp/key","sshPort":22,"tags":["backup"]}}}'
+BACKUP_NODE='{"nodes":{"vps1":{"publicIp":"192.0.2.1","sshKey":"/tmp/key","sshPort":22,"tags":["backup","applications/rust-storage-streamer"]}}}'
 (
   cd "$INIT_REPO"
   NODES_JSON="$BACKUP_NODE" bash "$ROOT/scripts/init-project.sh"
   test -f secrets/wireguard/vps1.json
   test -f secrets/restic.json
+  test -f secrets/rust-storage-streamer.json
   cp secrets/restic.json "$TMP/restic-before.json"
+  cp secrets/rust-storage-streamer.json "$TMP/rust-storage-streamer-before.json"
   NODES_JSON="$BACKUP_NODE" bash "$ROOT/scripts/init-project.sh"
   cmp secrets/restic.json "$TMP/restic-before.json"
+  cmp secrets/rust-storage-streamer.json "$TMP/rust-storage-streamer-before.json"
 
   if bash "$ROOT/scripts/check-project.sh"; then
     echo "check-project should reject CHANGEME" >&2

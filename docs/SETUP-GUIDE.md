@@ -118,6 +118,7 @@ catch typing errors.
 | `applications/ntfy` | Notifications |
 | `applications/filesave-server` | File sharing |
 | `applications/reposilite` | Maven repository |
+| `applications/rust-storage-streamer` | Discord-backed Files and S3 gateways |
 | `applications/www` | Static website |
 | `raspberry-pi` | Raspberry Pi 5 hardware modules from the template |
 
@@ -290,6 +291,7 @@ decrypts into a protected temporary file, then writes the encrypted file again.
 | `gitea.json` | `oidc_client_secret` | Generated when Gitea and Kanidm are active |
 | `kanidm.json` | `idm_admin_password` | Generated when an SSO client is active |
 | `docker-registry.json` | `accounts` | htpasswd contents to provide |
+| `rust-storage-streamer.json` | `webhooks` | One Discord `<id>:<token>` per line |
 | `rclone-sync.json` | key named after the mount | Complete `rclone.conf` to provide |
 
 For the registry, generate a bcrypt htpasswd line without permanently
@@ -304,6 +306,21 @@ Copy the generated line into the `accounts` field with `sops`. For Restic,
 required by that backend, one per line. For Rclone, the field value is the
 complete contents of a working configuration, including its `remote` section
 and optional `crypt` section.
+
+Rust Storage Streamer exposes Files only through an SSH tunnel:
+
+```sh
+ssh -L 8080:127.0.0.1:8080 root@<host>
+```
+
+Create S3 credentials after deployment from the protected catalog:
+
+```sh
+database='sqlite:///var/lib/rust-storage-streamer-s3/s3-catalog.db?mode=rwc'
+sudo -u rust-storage-streamer-s3 \
+  streamer-s3-discord --database-url "$database" \
+  credential create --can-create-buckets
+```
 
 ## 10. Checking and deploying
 

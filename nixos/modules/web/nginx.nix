@@ -184,9 +184,9 @@ in
                 "${locPath}" = {
                   proxyPass = "${if entry.backendTls or false then "https" else "http"}://${entry._name}";
                   proxyWebsockets = true;
-                }
-                // lib.optionalAttrs (entry.backendTls or false) {
-                  extraConfig = "proxy_ssl_verify off;";
+                  extraConfig = entry.locationExtraConfig + lib.optionalString (entry.backendTls or false) ''
+                    proxy_ssl_verify off;
+                  '';
                 };
               }
               // lib.listToAttrs (

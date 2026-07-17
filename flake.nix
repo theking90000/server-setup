@@ -9,6 +9,10 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    rust-storage-streamer = {
+      url = "github:theking90000/rust-storage-streamer";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs =
@@ -18,6 +22,7 @@
       nixpkgs-darwin,
       colmena,
       sops-nix,
+      rust-storage-streamer,
       ...
     }:
     let
@@ -121,6 +126,7 @@
                 upstream-base-url = inactiveServiceValue;
               };
               infra.reposilite.url = inactiveServiceValue;
+              infra.rust-storage-streamer.s3Url = inactiveServiceValue;
               infra.synapse = {
                 url = inactiveServiceValue;
                 serverName = inactiveServiceValue;
@@ -276,6 +282,26 @@
               };
             }
           ];
+      rustStorageStreamerNode =
+        mkNode
+          {
+            test = baseNode // {
+              tags = [
+                "applications/rust-storage-streamer"
+                "backup"
+                "web-server"
+              ];
+            };
+          }
+          [
+            {
+              infra.restic = {
+                repository = "local:/tmp/backup";
+                password = "test";
+              };
+              infra.rust-storage-streamer.s3Url = "https://storage.example.test";
+            }
+          ];
       rcloneMount = lib.findFirst (
         mount: mount.where == "/mnt/test"
       ) null fileSecretsNode.config.systemd.mounts;
@@ -379,6 +405,7 @@
       nixosModules.default = {
         imports = [
           sops-nix.nixosModules.sops
+          rust-storage-streamer.nixosModules.default
           ./nixos/modules
         ];
       };
@@ -518,6 +545,36 @@
           assert lib.hasInfix "pg_dump" backup.backupPrepareCommand;
           assert lib.hasInfix "e2e_one_time_keys_json" backup.backupPrepareCommand;
           mkEvalCheck "synapse" synapseSsoNode;
+        rust-storage-streamer =
+          let
+            filesService = rustStorageStreamerNode.config.services.rust-storage-streamer.files;
+            s3Service = rustStorageStreamerNode.config.services.rust-storage-streamer.s3;
+            filesUnit = rustStorageStreamerNode.config.systemd.services.rust-storage-streamer-files;
+            s3Unit = rustStorageStreamerNode.config.systemd.services.rust-storage-streamer-s3;
+            ingress = rustStorageStreamerNode.config.infra.ingress.rust-storage-streamer-s3;
+            nginxLocation =
+              rustStorageStreamerNode.config.services.nginx.virtualHosts."storage.example.test".locations."/";
+          in
+          assert assertSecret rustStorageStreamerNode "rust-storage-streamer/webhooks"
+            ./tests/sops/rust-storage-streamer.json "webhooks";
+          assert filesService.enable;
+          assert filesService.listenAddress == "127.0.0.1";
+          assert s3Service.enable;
+          assert s3Service.listenAddress == "10.100.0.1";
+          assert builtins.elem "webhooks:/run/secrets/rust-storage-streamer/webhooks"
+            filesUnit.serviceConfig.LoadCredential;
+          assert builtins.elem "webhooks:/run/secrets/rust-storage-streamer/webhooks"
+            s3Unit.serviceConfig.LoadCredential;
+          assert ingress.backend == [ "10.100.0.1:8081" ];
+          assert lib.hasInfix "proxy_request_buffering off" ingress.locationExtraConfig;
+          assert lib.hasInfix "client_max_body_size 0" nginxLocation.extraConfig;
+          assert lib.any (rule: rule.port == 8081 && rule.allowedTags == [ "web-server" ])
+            rustStorageStreamerNode.config.infra.security.acls;
+          assert builtins.elem "/var/lib/rust-storage-streamer-files"
+            rustStorageStreamerNode.config.infra.backup.paths;
+          assert builtins.elem "/var/lib/rust-storage-streamer-s3"
+            rustStorageStreamerNode.config.infra.backup.paths;
+          mkEvalCheck "rust-storage-streamer" rustStorageStreamerNode;
         rclone-config =
           assert rcloneMount != null;
           assert lib.hasInfix "config=/var/lib/rclone-sync/test/rclone.conf" rcloneMount.options;

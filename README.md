@@ -175,6 +175,7 @@ New deployments use SOPS by default.
 | `applications/jellyfin`        | Media server                                   |
 | `applications/ntfy`            | Push notifications                             |
 | `applications/reposilite`      | Maven repository                               |
+| `applications/rust-storage-streamer` | Discord-backed Files and S3 gateways     |
 | `applications/synapse`         | Federated Matrix homeserver with optional SSO  |
 | `applications/www`             | Static hosting                                 |
 | `applications/sncb-insights`   | Application provided by the private repository |

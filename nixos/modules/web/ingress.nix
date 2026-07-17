@@ -59,6 +59,12 @@ let
         default = false;
         description = "Utiliser HTTPS pour la connexion aux backends (proxy_ssl_verify off).";
       };
+
+      locationExtraConfig = lib.mkOption {
+        type = types.lines;
+        default = "";
+        description = "Configuration Nginx ajoutée à la location de cet ingress.";
+      };
     };
   };
 

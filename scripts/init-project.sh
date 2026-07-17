@@ -127,6 +127,11 @@ if has_tag "applications/docker-registry"; then
   encrypt_new "$TMP/docker-registry.json" secrets/docker-registry.json
 fi
 
+if has_tag "applications/rust-storage-streamer"; then
+  jq -n '{webhooks: "CHANGEME"}' > "$TMP/rust-storage-streamer.json"
+  encrypt_new "$TMP/rust-storage-streamer.json" secrets/rust-storage-streamer.json
+fi
+
 if [ -f config/rclone-sync/rclone-sync.nix ]; then
   mapfile -t RCLONE_MOUNTS < <(
     rg -o '^\s*"[^"]+"\s*=\s*\{' config/rclone-sync/rclone-sync.nix \

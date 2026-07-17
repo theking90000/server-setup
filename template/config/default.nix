@@ -10,6 +10,7 @@
     ./ntfy/ntfy.nix
     ./rclone-sync/rclone-sync.nix
     ./reposilite/reposilite.nix
+    ./rust-storage-streamer/rust-storage-streamer.nix
     ./synapse/synapse.nix
     ./www/www.nix
   ];
