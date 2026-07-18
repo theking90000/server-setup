@@ -123,7 +123,10 @@ if has_tag "kanidm" && {
 fi
 
 if has_tag "applications/qbittorrent"; then
-  jq -n '{wgConf: "CHANGEME"}' > "$TMP/qbittorrent.json"
+  random_file "$TMP/qbittorrent-password"
+  jq -n --rawfile password "$TMP/qbittorrent-password" \
+    '{wgConf: "CHANGEME", webui_password: ($password | rtrimstr("\n"))}' \
+    > "$TMP/qbittorrent.json"
   encrypt_new "$TMP/qbittorrent.json" secrets/qbittorrent.json
 fi
 

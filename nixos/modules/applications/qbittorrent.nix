@@ -23,9 +23,14 @@
 # Address/DNS/MTU en sont extraits à l'exécution, le reste part dans
 # `wg setconf` via `wg-quick strip`.
 #
+# Le mot de passe WebUI vient du même fichier SOPS (clé "webui_password",
+# en clair, chiffré au repos) : le preStart le hache en PBKDF2 (SHA512,
+# 100 000 itérations, le format qBittorrent) et l'injecte dans
+# qBittorrent.conf à chaque démarrage. Utilisateur : admin.
+#
 # Notes d'exploitation :
-#   - premier démarrage : mot de passe WebUI temporaire dans
-#     `journalctl -u qbittorrent` ;
+#   - le mot de passe WebUI est imposé depuis SOPS à chaque démarrage ;
+#     un changement fait dans l'UI ne survit pas à un restart ;
 #   - la WebUI écoute sur toutes les interfaces du netns, wg-qbt inclus ;
 #     dans les préférences WebUI, fixer l'adresse d'écoute à 10.200.0.2
 #     si le provider autorise du trafic entrant ;
@@ -100,6 +105,13 @@ in
           "qbittorrent-netns.service"
           "qbittorrent.service"
         ];
+      };
+
+      sops.secrets."qbittorrent/webui-password" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/qbittorrent.json";
+        key = "webui_password";
+        mode = "0400";
+        restartUnits = [ "qbittorrent.service" ];
       };
 
       systemd.services.qbittorrent-netns = {
@@ -179,12 +191,50 @@ in
       systemd.services.qbittorrent = {
         bindsTo = [ "qbittorrent-netns.service" ];
         after = [ "qbittorrent-netns.service" ];
+        path = [
+          pkgs.openssl
+          pkgs.coreutils
+          pkgs.gawk
+        ];
         serviceConfig = {
           NetworkNamespacePath = "/run/netns/${netns}";
           BindReadOnlyPaths = [ "/etc/netns/${netns}/resolv.conf:/etc/resolv.conf" ];
           # incompatible avec l'entrée dans un netns possédé par le user ns initial
           PrivateUsers = lib.mkForce false;
+          LoadCredential = [ "webui-password:/run/secrets/qbittorrent/webui-password" ];
         };
+        # Impose le mot de passe WebUI depuis SOPS : hash PBKDF2 au format
+        # qBittorrent (SHA512, 100k itérations, dklen 64, sel 16 octets)
+        # injecté dans qBittorrent.conf avant chaque démarrage.
+        # ponytail: le hex du mot de passe transite par argv d'openssl,
+        # lisible dans /proc/<pid>/cmdline pendant ~100 ms ; passer à un
+        # blob PBKDF2 pré-calculé en SOPS si des users locaux non fiables
+        # apparaissent un jour sur ces machines
+        preStart = ''
+          conf=${profileDir}/qBittorrent/config/qBittorrent.conf
+          touch "$conf"
+
+          pass_hex=$(tr -d '\n' < "$CREDENTIALS_DIRECTORY/webui-password" \
+            | od -An -tx1 | tr -d ' \n' | tr '[:lower:]' '[:upper:]')
+          salt_hex=$(openssl rand -hex 16 | tr '[:lower:]' '[:upper:]')
+          hash_hex=$(openssl kdf -keylen 64 -kdfopt digest:SHA512 \
+            -kdfopt "hexpass:$pass_hex" -kdfopt "hexsalt:$salt_hex" \
+            -kdfopt iter:100000 PBKDF2 | tr -d ':')
+          salt_b64=$(printf %s "$salt_hex" | basenc --base16 -d | base64 -w0)
+          hash_b64=$(printf %s "$hash_hex" | basenc --base16 -d | base64 -w0)
+
+          # ENVIRON plutôt que -v : awk n'interprète pas les backslashes
+          line='WebUI\Password_PBKDF2="@ByteArray('"$salt_b64:$hash_b64"')"'
+          export line
+          awk '
+            BEGIN { done = 0 }
+            index($0, "WebUI\\Password_PBKDF2=") == 1 { next }
+            { print }
+            $0 == "[Preferences]" && !done { print ENVIRON["line"]; done = 1 }
+            END { if (!done) { print "[Preferences]"; print ENVIRON["line"] } }
+          ' "$conf" > "$conf.tmp"
+          mv "$conf.tmp" "$conf"
+        '';
       };
 
       # Relais WebUI : IP wg0 du nœud -> veth du netns

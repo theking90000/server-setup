@@ -556,6 +556,12 @@ in
     in
     assert assertSecret qbittorrentNode "qbittorrent/wg.conf" ./tests/sops/qbittorrent.json "wgConf";
     assert qbittorrentNode.config.sops.secrets."qbittorrent/wg.conf".mode == "0400";
+    assert assertSecret qbittorrentNode "qbittorrent/webui-password" ./tests/sops/qbittorrent.json
+      "webui_password";
+    assert builtins.elem "webui-password:/run/secrets/qbittorrent/webui-password" (
+      lib.toList qbtUnit.serviceConfig.LoadCredential
+    );
+    assert lib.hasInfix "Password_PBKDF2" qbtUnit.preStart;
     assert qbittorrentNode.config.services.qbittorrent.enable;
     assert qbittorrentNode.config.services.qbittorrent.torrentingPort == 62000;
     assert qbtUnit.serviceConfig.NetworkNamespacePath == "/run/netns/qbittorrent";
