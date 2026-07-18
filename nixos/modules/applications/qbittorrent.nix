@@ -187,6 +187,9 @@ in
           for d in ''${dns:-9.9.9.9}; do
             echo "nameserver $d"
           done > /etc/netns/${netns}/resolv.conf
+          # l'umask 077 du haut ne doit pas s'appliquer ici : le fichier est
+          # lu par l'utilisateur qbittorrent via le bind mount du service
+          chmod 0644 /etc/netns/${netns}/resolv.conf
         '';
         postStop = cleanupScript;
       };

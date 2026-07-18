@@ -571,6 +571,8 @@ in
     assert builtins.elem "qbittorrent-netns.service" qbtUnit.bindsTo;
     # kill switch : la seule route par défaut du netns passe par le tunnel
     assert lib.hasInfix "route add default dev wg-qbt" netnsUnit.script;
+    # le resolv.conf du netns doit rester lisible par l'utilisateur qbittorrent
+    assert lib.hasInfix "chmod 0644 /etc/netns/qbittorrent/resolv.conf" netnsUnit.script;
     assert !lib.hasInfix "route add default dev veth" netnsUnit.script;
     assert
       qbittorrentNode.config.systemd.sockets.qbittorrent-webui.listenStreams == [ "10.100.0.1:8080" ];
