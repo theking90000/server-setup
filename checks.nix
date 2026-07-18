@@ -577,6 +577,20 @@ in
     assert lib.any (
       rule: rule.port == 8080 && rule.allowedTags == [ "web-server" ]
     ) qbittorrentNode.config.infra.security.acls;
+    assert
+      qbittorrentNode.config.systemd.services.qbittorrent-exporter.environment.QBITTORRENT_BASE_URL
+      == "http://10.200.0.2:8080";
+    assert builtins.elem "webui-password:/run/secrets/qbittorrent/webui-password" (
+      lib.toList qbittorrentNode.config.systemd.services.qbittorrent-exporter.serviceConfig.LoadCredential
+    );
+    assert lib.any (
+      rule: rule.port == 8090 && rule.allowedTags == [ "prometheus" ]
+    ) qbittorrentNode.config.infra.security.acls;
+    assert builtins.length qbittorrentNode.config.infra.telemetry.qbittorrent == 1;
+    assert (builtins.head qbittorrentNode.config.infra.telemetry.qbittorrent).targets == [
+      "test:8090"
+    ];
+    assert (builtins.head qbittorrentNode.config.infra.telemetry.qbittorrent).labels.host == "test";
     assert qbittorrentNode.config.infra.ingress.qbittorrent.backend == [ "10.100.0.1:8080" ];
     assert builtins.elem "/var/lib/qBittorrent" qbittorrentNode.config.infra.backup.paths;
     mkEvalCheck "qbittorrent" qbittorrentNode;

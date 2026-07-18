@@ -60,6 +60,7 @@ let
   nsVethIp = "10.200.0.2";
   wgConfPath = "/run/secrets/qbittorrent/wg.conf";
   profileDir = "/var/lib/qBittorrent";
+  metricsPort = 8090;
 
   cleanupScript = ''
     ip netns delete ${netns} 2>/dev/null || true
@@ -111,7 +112,10 @@ in
         sopsFile = config.infra.sops.secretsDirectory + "/qbittorrent.json";
         key = "webui_password";
         mode = "0400";
-        restartUnits = [ "qbittorrent.service" ];
+        restartUnits = [
+          "qbittorrent.service"
+          "qbittorrent-exporter.service"
+        ];
       };
 
       systemd.services.qbittorrent-netns = {
@@ -253,11 +257,39 @@ in
         serviceConfig.ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd ${nsVethIp}:${toString cfg.webuiPort}";
       };
 
+      # L'exporteur tourne côté hôte et interroge la WebUI via le veth.
+      # Il n'a pas d'option d'adresse d'écoute (port seul, donc 0.0.0.0) :
+      # le port est verrouillé par l'ACL prometheus ci-dessous.
+      systemd.services.qbittorrent-exporter = {
+        description = "Exporteur Prometheus qBittorrent";
+        wantedBy = [ "multi-user.target" ];
+        wants = [ "qbittorrent.service" ];
+        after = [ "qbittorrent.service" ];
+        environment = {
+          QBITTORRENT_BASE_URL = "http://${nsVethIp}:${toString cfg.webuiPort}";
+          QBITTORRENT_USERNAME = "admin";
+          QBITTORRENT_PASSWORD_FILE = "%d/webui-password";
+          EXPORTER_PORT = toString metricsPort;
+        };
+        serviceConfig = {
+          ExecStart = lib.getExe pkgs.prometheus-qbittorrent-exporter;
+          DynamicUser = true;
+          LoadCredential = [ "webui-password:/run/secrets/qbittorrent/webui-password" ];
+          Restart = "on-failure";
+          RestartSec = 10;
+        };
+      };
+
       infra.security.acls = [
         {
           port = cfg.webuiPort;
           allowedTags = [ "web-server" ];
           description = "qBittorrent WebUI";
+        }
+        {
+          port = metricsPort;
+          allowedTags = [ "prometheus" ];
+          description = "qBittorrent exporter";
         }
       ];
 
@@ -265,6 +297,13 @@ in
     })
 
     # Fleet-wide contributions
+    {
+      infra.telemetry.qbittorrent = map (host: {
+        targets = [ "${host}:${toString metricsPort}" ];
+        labels = { inherit host; };
+      }) (services.getHostsByTag tag);
+    }
+
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress.qbittorrent = {
         url = cfg.url;
