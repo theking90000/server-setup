@@ -131,6 +131,11 @@ in
         key = "oidc_client_secret";
         owner = if services.hasTag "kanidm" then "kanidm" else "root";
         mode = "0400";
+        # rotation : re-provisionner le client Kanidm et recharger le proxy,
+        # sinon l'échange de token répond 401 avec l'ancien secret
+        restartUnits =
+          lib.optional (services.hasTag "kanidm") "kanidm.service"
+          ++ lib.optional (services.hasTag webTag) "oauth2-proxy.service";
       };
     })
 
