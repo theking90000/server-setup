@@ -291,6 +291,23 @@ let
           };
         }
       ];
+  qbittorrentSsoNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [
+            "applications/qbittorrent"
+            "kanidm"
+            "web-server"
+          ];
+        };
+      }
+      [
+        {
+          infra.kanidm.url = "https://auth.example.test";
+          infra.qbittorrent.url = "https://qbt.example.test";
+        }
+      ];
   rcloneMount = lib.findFirst (
     mount: mount.where == "/mnt/test"
   ) null fileSecretsNode.config.systemd.mounts;
@@ -597,7 +614,51 @@ in
       qbittorrentNode.config.infra.grafana.dashboards;
     assert qbittorrentNode.config.infra.ingress.qbittorrent.backend == [ "10.100.0.1:8080" ];
     assert builtins.elem "/var/lib/qBittorrent" qbittorrentNode.config.infra.backup.paths;
+    # sans kanidm : pas de bypass d'auth, le mot de passe reste exigé
+    assert !lib.hasInfix "AuthSubnetWhitelist=10.200.0.0/30"
+      qbittorrentNode.config.systemd.services.qbittorrent.preStart;
+    assert qbittorrentNode.config.infra.oauth2Proxy.apps == { };
     mkEvalCheck "qbittorrent" qbittorrentNode;
+  qbittorrent-sso =
+    let
+      c = qbittorrentSsoNode.config;
+      oauth2 = c.services.kanidm.provision.systems.oauth2.oauth2-proxy;
+      qbtVhost = c.services.nginx.virtualHosts."qbt.example.test";
+    in
+    assert c.infra.oauth2Proxy.apps.qbittorrent.group == "qbittorrent_users";
+    assert builtins.hasAttr "qbittorrent_users" c.services.kanidm.provision.groups;
+    assert oauth2.scopeMaps.qbittorrent_users == [
+      "openid"
+      "profile"
+      "email"
+    ];
+    assert oauth2.claimMaps.sso_groups.valuesByGroup.qbittorrent_users == [ "qbittorrent_users" ];
+    assert oauth2.basicSecretFile == "/run/secrets/sso/oauth2-proxy-client-secret";
+    assert oauth2.originUrl == [ "https://auth.example.test/_ssoproxy/callback" ];
+    assert c.services.oauth2-proxy.enable;
+    assert
+      c.services.oauth2-proxy.oidcIssuerUrl == "https://auth.example.test/oauth2/openid/oauth2-proxy";
+    assert c.services.oauth2-proxy.cookie.domain == ".example.test";
+    assert c.services.oauth2-proxy.extraConfig."proxy-prefix" == "/_ssoproxy";
+    assert c.services.oauth2-proxy.extraConfig."oidc-groups-claim" == "sso_groups";
+    assert lib.hasInfix "auth_request /_ssoproxy/auth" qbtVhost.extraConfig;
+    assert lib.hasInfix "allowed_groups=qbittorrent_users"
+      qbtVhost.locations."= /_ssoproxy/auth".proxyPass;
+    assert
+      qbtVhost.locations."@ssoLogin".return
+      == "307 https://auth.example.test/_ssoproxy/start?rd=$scheme://$host$request_uri";
+    assert
+      c.services.nginx.virtualHosts."auth.example.test".locations."/_ssoproxy/".proxyPass
+      == "http://127.0.0.1:4180";
+    assert assertSecret qbittorrentSsoNode "sso/oauth2-proxy-client-secret"
+      ./tests/sops/oauth2-proxy.json
+      "oidc_client_secret";
+    assert c.sops.secrets."sso/oauth2-proxy-client-secret".owner == "kanidm";
+    assert assertSecret qbittorrentSsoNode "oauth2-proxy/cookie-secret" ./tests/sops/oauth2-proxy.json
+      "cookie_secret";
+    # SSO actif : bypass d'auth qBittorrent pour le subnet veth
+    assert lib.hasInfix "AuthSubnetWhitelist=10.200.0.0/30" c.systemd.services.qbittorrent.preStart;
+    mkEvalCheck "qbittorrent-sso" qbittorrentSsoNode;
   template =
     assert builtins.isAttrs templateParsed;
     assert builtins.pathExists ./template/inventory/hardware/vps1/hardware.nix;

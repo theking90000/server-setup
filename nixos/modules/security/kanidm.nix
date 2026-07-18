@@ -49,14 +49,16 @@ let
 
   ldapsConfig = cfg.ldapPort != null;
 
-  groupName = clientName: name: "${clientName}_${name}";
+  groupName =
+    clientName: name: group:
+    if group.kanidmName != null then group.kanidmName else "${clientName}_${name}";
 
   ssoGroups = lib.foldl' lib.recursiveUpdate { } (
     lib.mapAttrsToList (
       clientName: client:
       lib.mapAttrs' (
-        name: _:
-        lib.nameValuePair (groupName clientName name) {
+        name: group:
+        lib.nameValuePair (groupName clientName name group) {
           members = [ ];
           overwriteMembers = false;
         }
@@ -74,7 +76,7 @@ let
     lib.genAttrs claimNames (claim: {
       joinType = "array";
       valuesByGroup = lib.mapAttrs' (
-        name: group: lib.nameValuePair (groupName clientName name) group.claims.${claim}
+        name: group: lib.nameValuePair (groupName clientName name group) group.claims.${claim}
       ) (lib.filterAttrs (_: group: builtins.hasAttr claim group.claims) client.groups);
     });
 
@@ -90,10 +92,10 @@ let
     basicSecretFile = if client.public then null else client.secretFile;
     allowInsecureClientDisablePkce = !client.pkce;
     scopeMaps = lib.mapAttrs' (
-      name: _: lib.nameValuePair (groupName clientName name) client.scopes
+      name: group: lib.nameValuePair (groupName clientName name group) client.scopes
     ) client.groups;
     supplementaryScopeMaps = lib.mapAttrs' (
-      name: group: lib.nameValuePair (groupName clientName name) group.extraScopes
+      name: group: lib.nameValuePair (groupName clientName name group) group.extraScopes
     ) (lib.filterAttrs (_: group: group.extraScopes != [ ]) client.groups);
     claimMaps = claimMaps clientName client;
   }) sso;

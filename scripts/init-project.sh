@@ -130,6 +130,15 @@ if has_tag "applications/qbittorrent"; then
   encrypt_new "$TMP/qbittorrent.json" secrets/qbittorrent.json
 fi
 
+if has_tag "kanidm" && has_tag "web-server"; then
+  random_file "$TMP/oauth2-proxy-client"
+  jq -n --rawfile clientSecret "$TMP/oauth2-proxy-client" \
+    --arg cookie "$(openssl rand -base64 32)" \
+    '{oidc_client_secret: ($clientSecret | rtrimstr("\n")), cookie_secret: $cookie}' \
+    > "$TMP/oauth2-proxy.json"
+  encrypt_new "$TMP/oauth2-proxy.json" secrets/oauth2-proxy.json
+fi
+
 if has_tag "applications/docker-registry"; then
   jq -n '{accounts: "CHANGEME"}' > "$TMP/docker-registry.json"
   encrypt_new "$TMP/docker-registry.json" secrets/docker-registry.json

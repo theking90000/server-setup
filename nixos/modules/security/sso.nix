@@ -77,6 +77,12 @@
               type = lib.types.attrsOf (
                 lib.types.submodule {
                   options = {
+                    kanidmName = lib.mkOption {
+                      type = lib.types.nullOr lib.types.str;
+                      default = null;
+                      description = "Nom Kanidm complet du groupe (défaut : <client>_<groupe>).";
+                    };
+
                     extraScopes = lib.mkOption {
                       type = lib.types.listOf lib.types.str;
                       default = [ ];

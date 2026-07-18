@@ -163,6 +163,7 @@ New deployments use SOPS by default.
 | `prometheus`              | Collection of registered scrape targets             |
 | `grafana`                 | Provisioned data sources and dashboards             |
 | `kanidm`                  | Identity, OIDC/OAuth2, and LDAPS                    |
+| `kanidm` + `web-server`   | SSO proxy (oauth2-proxy) for apps without native OIDC |
 | `infra.rcloneSync.mounts` | Per-node mounts without a tag                       |
 
 ### Applications

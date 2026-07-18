@@ -28,6 +28,11 @@
 # 100 000 itérations, le format qBittorrent) et l'injecte dans
 # qBittorrent.conf à chaque démarrage. Utilisateur : admin.
 #
+# SSO : si un nœud kanidm existe et que `url` est définie, l'ingress est
+# protégé par oauth2-proxy (groupe Kanidm `qbittorrent_users`) et l'auth
+# qBittorrent est bypassée pour le subnet veth — plus de mot de passe à
+# saisir, ni via nginx (SSO) ni via wg0/tunnel (whitelist).
+#
 # Notes d'exploitation :
 #   - le mot de passe WebUI est imposé depuis SOPS à chaque démarrage ;
 #     un changement fait dans l'UI ne survit pas à un restart ;
@@ -51,6 +56,10 @@ let
   cfg = config.infra.qbittorrent;
   tag = "applications/qbittorrent";
   enabled = services.hasTag tag;
+  # SSO via oauth2-proxy : plus de mot de passe WebUI, l'auth qBittorrent est
+  # bypassée pour le subnet veth (seule source possible : proxy wg0, nginx
+  # SSO et exporteur passent tous par 10.200.0.1)
+  ssoEnabled = services.getHostsByTag "kanidm" != [ ] && cfg.url != null;
 
   netns = "qbittorrent";
   wgIf = "wg-qbt";
@@ -237,14 +246,20 @@ in
           hash_b64=$(printf %s "$hash_hex" | basenc --base16 -d | base64 -w0)
 
           # ENVIRON plutôt que -v : awk n'interprète pas les backslashes
-          line='WebUI\Password_PBKDF2="@ByteArray('"$salt_b64:$hash_b64"')"'
-          export line
+          lines='WebUI\Password_PBKDF2="@ByteArray('"$salt_b64:$hash_b64"')"'
+          ${lib.optionalString ssoEnabled ''
+            # SSO actif : auth bypassée pour le veth (proxy wg0, nginx SSO,
+            # exporteur) ; le mot de passe reste posé mais jamais demandé
+            lines=$(printf '%s\n%s\n%s' "$lines" 'WebUI\AuthSubnetWhitelist=10.200.0.0/30' 'WebUI\AuthSubnetWhitelistEnabled=true')
+          ''}
+          export lines
           awk '
             BEGIN { done = 0 }
             index($0, "WebUI\\Password_PBKDF2=") == 1 { next }
+            index($0, "WebUI\\AuthSubnetWhitelist") == 1 { next }
             { print }
-            $0 == "[Preferences]" && !done { print ENVIRON["line"]; done = 1 }
-            END { if (!done) { print "[Preferences]"; print ENVIRON["line"] } }
+            $0 == "[Preferences]" && !done { print ENVIRON["lines"]; done = 1 }
+            END { if (!done) { print "[Preferences]"; print ENVIRON["lines"] } }
           ' "$conf" > "$conf.tmp"
           mv "$conf.tmp" "$conf"
         '';
@@ -317,6 +332,11 @@ in
 
     (lib.mkIf (services.getHostsByTag tag != [ ]) {
       infra.grafana.dashboards = [ ./dashboards/qbittorrent.json ];
+    })
+
+    # SSO : accès WebUI réservé au groupe Kanidm qbittorrent_users
+    (lib.mkIf (services.getVpnIpsByTag tag != [ ] && ssoEnabled) {
+      infra.oauth2Proxy.apps.qbittorrent.url = cfg.url;
     })
 
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
