@@ -270,6 +270,8 @@ in
           QBITTORRENT_USERNAME = "admin";
           QBITTORRENT_PASSWORD_FILE = "%d/webui-password";
           EXPORTER_PORT = toString metricsPort;
+          # requis par le dashboard (métriques par torrent)
+          ENABLE_HIGH_CARDINALITY = "true";
         };
         serviceConfig = {
           ExecStart = lib.getExe pkgs.prometheus-qbittorrent-exporter;
@@ -303,6 +305,10 @@ in
         labels = { inherit host; };
       }) (services.getHostsByTag tag);
     }
+
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/qbittorrent.json ];
+    })
 
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress.qbittorrent = {

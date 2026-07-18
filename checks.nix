@@ -591,6 +591,8 @@ in
       "test:8090"
     ];
     assert (builtins.head qbittorrentNode.config.infra.telemetry.qbittorrent).labels.host == "test";
+    assert builtins.elem ./nixos/modules/applications/dashboards/qbittorrent.json
+      qbittorrentNode.config.infra.grafana.dashboards;
     assert qbittorrentNode.config.infra.ingress.qbittorrent.backend == [ "10.100.0.1:8080" ];
     assert builtins.elem "/var/lib/qBittorrent" qbittorrentNode.config.infra.backup.paths;
     mkEvalCheck "qbittorrent" qbittorrentNode;
