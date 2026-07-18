@@ -46,6 +46,19 @@ in
         openFirewall = false;
       };
 
+      systemd.services.jellyfin-daily-restart = {
+        description = "Restart Jellyfin to limit memory growth";
+        serviceConfig = {
+          Type = "oneshot";
+          ExecStart = "${config.systemd.package}/bin/systemctl restart jellyfin.service";
+        };
+      };
+
+      systemd.timers.jellyfin-daily-restart = {
+        wantedBy = [ "timers.target" ];
+        timerConfig.OnCalendar = "*-*-* 04:45:00";
+      };
+
       infra.backup.paths = [ dataDir ];
 
       infra.security.acls = [
