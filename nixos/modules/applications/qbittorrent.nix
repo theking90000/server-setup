@@ -131,9 +131,15 @@ in
         serviceConfig = {
           Type = "oneshot";
           RemainAfterExit = true;
+          RuntimeDirectory = "qbittorrent-netns";
+          RuntimeDirectoryMode = "0700";
         };
         script = ''
-          conf=${wgConfPath}
+          # copie normalisée : les confs provider sont souvent en CRLF et un
+          # \r résiduel fait rejeter adresses et routes par iproute2
+          umask 077
+          conf="$RUNTIME_DIRECTORY/wg.conf"
+          tr -d '\r' < ${wgConfPath} > "$conf"
 
           get() {
             awk -F= -v key="$1" '
