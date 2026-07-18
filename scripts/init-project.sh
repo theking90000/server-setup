@@ -133,7 +133,7 @@ fi
 if has_tag "kanidm" && has_tag "web-server"; then
   random_file "$TMP/oauth2-proxy-client"
   jq -n --rawfile clientSecret "$TMP/oauth2-proxy-client" \
-    --arg cookie "$(openssl rand -base64 32)" \
+    --arg cookie "$(openssl rand -hex 16)" \
     '{oidc_client_secret: ($clientSecret | rtrimstr("\n")), cookie_secret: $cookie}' \
     > "$TMP/oauth2-proxy.json"
   encrypt_new "$TMP/oauth2-proxy.json" secrets/oauth2-proxy.json

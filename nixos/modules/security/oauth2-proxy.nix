@@ -28,8 +28,9 @@
 # inscrite. L'ajout d'un utilisateur reste manuel :
 #   kanidm group add-members <app>_users <user>
 #
-# Secrets : secrets/oauth2-proxy.json — cookie_secret (base64, 32 octets)
-# et oidc_client_secret (requis aussi sur le nœud kanidm, comme grafana).
+# Secrets : secrets/oauth2-proxy.json — cookie_secret (16, 24 ou 32
+# octets bruts, ex `openssl rand -hex 16`) et oidc_client_secret (requis
+# aussi sur le nœud kanidm, comme grafana).
 # -------------------------------------------------------------------------
 {
   config,
