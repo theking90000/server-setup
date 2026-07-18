@@ -10,6 +10,7 @@
 #   - gitea              : serveur Git auto-hébergé (tag: applications/gitea)
 #   - jellyfin             : serveur multimédia (tag: applications/jellyfin)
 #   - ntfy               : serveur de notifications push (tag: applications/ntfy)
+#   - qbittorrent        : client BitTorrent isolé derrière un VPN tiers (tag: applications/qbittorrent)
 #   - reposilite         : gestionnaire de dépôts Maven (tag: applications/reposilite)
 #   - rust-storage-streamer : gateways Files et S3 sur Discord (tag: applications/rust-storage-streamer)
 #   - sncb-insights      : scraping des données de la SNCB (tag: applications/sncb-insights)
@@ -23,6 +24,7 @@
     ./gitea.nix
     ./jellyfin.nix
     ./ntfy.nix
+    ./qbittorrent.nix
     ./reposilite.nix
     ./rust-storage-streamer.nix
     ./sncb-insights.nix

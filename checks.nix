@@ -86,6 +86,10 @@ let
             url = inactiveServiceValue;
             upstream-base-url = inactiveServiceValue;
           };
+          infra.qbittorrent = {
+            url = inactiveServiceValue;
+            torrentingPort = inactiveServiceValue;
+          };
           infra.reposilite.url = inactiveServiceValue;
           infra.rust-storage-streamer.s3Url = inactiveServiceValue;
           infra.synapse = {
@@ -119,6 +123,7 @@ let
             "applications/gitea"
             "applications/jellyfin"
             "applications/ntfy"
+            "applications/qbittorrent"
             "applications/reposilite"
             "applications/sncb-insights"
             "applications/synapse"
@@ -261,6 +266,29 @@ let
             password = "test";
           };
           infra.rust-storage-streamer.s3Url = "https://storage.example.test";
+        }
+      ];
+  qbittorrentNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [
+            "applications/qbittorrent"
+            "backup"
+            "web-server"
+          ];
+        };
+      }
+      [
+        {
+          infra.restic = {
+            repository = "local:/tmp/backup";
+            password = "test";
+          };
+          infra.qbittorrent = {
+            url = "https://qbt.example.test";
+            torrentingPort = 62000;
+          };
         }
       ];
   rcloneMount = lib.findFirst (
@@ -521,6 +549,31 @@ in
     assert builtins.elem "/var/lib/rust-storage-streamer-s3"
       rustStorageStreamerNode.config.infra.backup.paths;
     mkEvalCheck "rust-storage-streamer" rustStorageStreamerNode;
+  qbittorrent =
+    let
+      netnsUnit = qbittorrentNode.config.systemd.services.qbittorrent-netns;
+      qbtUnit = qbittorrentNode.config.systemd.services.qbittorrent;
+    in
+    assert assertSecret qbittorrentNode "qbittorrent/wg.conf" ./tests/sops/qbittorrent.json "wgConf";
+    assert qbittorrentNode.config.sops.secrets."qbittorrent/wg.conf".mode == "0400";
+    assert qbittorrentNode.config.services.qbittorrent.enable;
+    assert qbittorrentNode.config.services.qbittorrent.torrentingPort == 62000;
+    assert qbtUnit.serviceConfig.NetworkNamespacePath == "/run/netns/qbittorrent";
+    assert builtins.elem "/etc/netns/qbittorrent/resolv.conf:/etc/resolv.conf" (
+      lib.toList qbtUnit.serviceConfig.BindReadOnlyPaths
+    );
+    assert builtins.elem "qbittorrent-netns.service" qbtUnit.bindsTo;
+    # kill switch : la seule route par défaut du netns passe par le tunnel
+    assert lib.hasInfix "route add default dev wg-qbt" netnsUnit.script;
+    assert !lib.hasInfix "route add default dev veth" netnsUnit.script;
+    assert
+      qbittorrentNode.config.systemd.sockets.qbittorrent-webui.listenStreams == [ "10.100.0.1:8080" ];
+    assert lib.any (
+      rule: rule.port == 8080 && rule.allowedTags == [ "web-server" ]
+    ) qbittorrentNode.config.infra.security.acls;
+    assert qbittorrentNode.config.infra.ingress.qbittorrent.backend == [ "10.100.0.1:8080" ];
+    assert builtins.elem "/var/lib/qBittorrent" qbittorrentNode.config.infra.backup.paths;
+    mkEvalCheck "qbittorrent" qbittorrentNode;
   template =
     assert builtins.isAttrs templateParsed;
     assert builtins.pathExists ./template/inventory/hardware/vps1/hardware.nix;

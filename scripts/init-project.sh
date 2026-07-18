@@ -122,6 +122,11 @@ if has_tag "kanidm" && {
   encrypt_new "$TMP/kanidm.json" secrets/kanidm.json
 fi
 
+if has_tag "applications/qbittorrent"; then
+  jq -n '{wgConf: "CHANGEME"}' > "$TMP/qbittorrent.json"
+  encrypt_new "$TMP/qbittorrent.json" secrets/qbittorrent.json
+fi
+
 if has_tag "applications/docker-registry"; then
   jq -n '{accounts: "CHANGEME"}' > "$TMP/docker-registry.json"
   encrypt_new "$TMP/docker-registry.json" secrets/docker-registry.json

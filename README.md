@@ -174,6 +174,7 @@ New deployments use SOPS by default.
 | `applications/gitea`           | Git forge                                      |
 | `applications/jellyfin`        | Media server                                   |
 | `applications/ntfy`            | Push notifications                             |
+| `applications/qbittorrent`     | BitTorrent client in a VPN-only netns (kill switch) |
 | `applications/reposilite`      | Maven repository                               |
 | `applications/rust-storage-streamer` | Discord-backed Files and S3 gateways     |
 | `applications/synapse`         | Federated Matrix homeserver with optional SSO  |
