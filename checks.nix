@@ -66,7 +66,7 @@ let
       }
       [
         {
-          infra.acme.email = inactiveServiceValue;
+          infra.acme.issuers = inactiveServiceValue;
           infra.dockerRegistry = {
             url = inactiveServiceValue;
             accounts = inactiveServiceValue;
@@ -128,23 +128,16 @@ let
             "applications/sncb-insights"
             "applications/synapse"
             "applications/www"
-            "acme-issuer"
           ];
         };
       }
       [
         {
-          infra.acme = {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
             email = "test@example.test";
             dnsProvider = "ovh";
-            dnsCredentials = "OVH_APPLICATION_KEY=test";
-            certSyncerPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest";
-            domains = [
-              {
-                domain = "example.test";
-                services = [ "nginx" ];
-              }
-            ];
+            dnsCredentialsFile = "/run/secrets/acme-test";
           };
           infra.dockerRegistry.accounts = "test:test";
           infra.grafana.password = "test";
@@ -322,38 +315,93 @@ let
       tags = [ ];
     };
   } [ ];
-  acmeIssuerSopsNode =
-    mkNode
-      {
-        test = baseNode // {
-          tags = [ "acme-issuer" ];
-        };
-      }
-      [
-        {
-          infra.acme = {
-            email = "test@example.test";
-            dnsProvider = "ovh";
-            certSyncerPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest";
-            domains = [ { domain = "example.test"; } ];
-          };
-        }
-      ];
-  acmeConsumerSopsNode =
+  acmeClaimsNode =
     mkNode
       {
         test = baseNode // {
           tags = [ ];
         };
-        issuer = baseNode // {
-          publicIp = "192.0.2.2";
-          vpnIp = "10.100.0.2";
-          tags = [ "acme-issuer" ];
+      }
+      [
+        {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
+          infra.acme.claims.kanidm = {
+            names = [ "auth.example.test" ];
+            consumer = {
+              kind = "service";
+              scope = "kanidm";
+            };
+            restartServices = [ "kanidm.service" ];
+          };
+          infra.acme.claims.ingress-gitea = {
+            names = [ "git.example.test" ];
+            consumer = {
+              kind = "ingress";
+              scope = "nginx";
+            };
+            coverage = "wildcard";
+            group = "nginx";
+            reloadServices = [ "nginx.service" ];
+          };
+          infra.acme.claims.ingress-www = {
+            names = [ "example.test" ];
+            consumer = {
+              kind = "ingress";
+              scope = "nginx";
+            };
+            coverage = "wildcard";
+            group = "nginx";
+            reloadServices = [ "nginx.service" ];
+          };
+        }
+      ];
+  acmeRejectionsNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [ ];
         };
       }
       [
-        { infra.acme.domains = [ { domain = "example.test"; } ]; }
+        {
+          infra.acme.issuers = {
+            primary.match = {
+              suffixes = [ "example.test" ];
+              hosts = [ ];
+            };
+            primary.email = "test@example.test";
+            primary.dnsProvider = "ovh";
+            other.match = {
+              suffixes = [ "example.test" ];
+              hosts = [ ];
+            };
+            other.email = "test@example.test";
+            other.dnsProvider = "ovh";
+          };
+          infra.acme.claims = {
+            unresolvable = {
+              names = [ "nope.example.org" ];
+              consumer.scope = "svc";
+            };
+            two-names = {
+              names = [
+                "a.example.test"
+                "b.example.test"
+              ];
+              consumer.scope = "svc";
+            };
+            ambiguous = {
+              names = [ "dup.example.test" ];
+              consumer.scope = "svc";
+            };
+          };
+        }
       ];
+  failedAssertions = node: map (a: a.message) (lib.filter (a: !a.assertion) node.config.assertions);
   grafanaSopsNode =
     mkNode
       {
@@ -786,15 +834,65 @@ in
       wireguardSopsNode.config.networking.wireguard.interfaces.wg0.privateKeyFile
       == "/run/secrets/wireguard/private-key";
     mkEvalCheck "sops-wireguard" wireguardSopsNode;
+  acme-claims =
+    let
+      c = acmeClaimsNode.config;
+      kanidmCert = c.security.acme.certs."primary-kanidm-exact-auth-example-test";
+      webCert = c.security.acme.certs."primary-nginx-wildcard-example-test";
+      claimOut = c.infra.acme.claims.kanidm.certificate;
+    in
+    # claim exact : SAN unique, clé propre, redémarrage du consommateur
+    assert kanidmCert.domain == "auth.example.test";
+    assert kanidmCert.extraDomainNames == [ ];
+    assert kanidmCert.group == "acme";
+    assert kanidmCert.reloadServices == [ ];
+    assert lib.hasInfix "try-restart kanidm.service" kanidmCert.postRun;
+    assert kanidmCert.environmentFile == "/run/secrets/acme/issuers/primary/dns-credentials";
+    # claims ingress : apex + enfant fusionnés dans un seul groupe wildcard
+    assert webCert.domain == "example.test";
+    assert webCert.extraDomainNames == [ "*.example.test" ];
+    assert webCert.group == "nginx";
+    assert webCert.reloadServices == [ "nginx.service" ];
+    assert c.security.acme.acceptTerms;
+    assert c.security.acme.maxConcurrentRenewals == 1;
+    # sortie calculée du claim : chemins et unités stables
+    assert claimOut.name == "primary-kanidm-exact-auth-example-test";
+    assert claimOut.fullchain == "/var/lib/acme/primary-kanidm-exact-auth-example-test/fullchain.pem";
+    assert claimOut.key == "/var/lib/acme/primary-kanidm-exact-auth-example-test/key.pem";
+    assert claimOut.unit == "acme-primary-kanidm-exact-auth-example-test.service";
+    # dépendances douces des consommateurs vers le bootstrap du certificat
+    assert builtins.elem claimOut.unit c.systemd.services.kanidm.wants;
+    assert builtins.elem claimOut.unit c.systemd.services.kanidm.after;
+    assert builtins.elem "acme-primary-nginx-wildcard-example-test.service" c.systemd.services.nginx.wants;
+    # plan calculé : deux groupes, claims rattachés
+    assert builtins.attrNames c.infra.acme.plan == [
+      "primary-kanidm-exact-auth-example-test"
+      "primary-nginx-wildcard-example-test"
+    ];
+    assert
+      lib.naturalSort c.infra.acme.plan."primary-nginx-wildcard-example-test".claims == [
+        "ingress-gitea"
+        "ingress-www"
+      ];
+    mkEvalCheck "acme-claims" acmeClaimsNode;
+  acme-rejections =
+    let
+      messages = failedAssertions acmeRejectionsNode;
+      hasError = infix: lib.any (lib.hasInfix infix) messages;
+    in
+    assert hasError "no ACME issuer matches 'nope.example.org'";
+    assert hasError "an exact claim must declare exactly one name";
+    assert hasError "ambiguous ACME issuers for 'dup.example.test'";
+    checkPkgs.runCommand "acme-rejections" { } ''touch "$out"'';
   sops-acme =
-    assert assertSecret acmeIssuerSopsNode "acme/dns-credentials" ./tests/sops/acme.json
-      "dnsCredentials";
-    assert assertSecret acmeConsumerSopsNode "acme/syncer-private-key" ./tests/sops/acme-syncer.json
-      "privateKey";
-    assert acmeIssuerSopsNode.config.sops.secrets."acme/dns-credentials".owner == "acme";
-    assert acmeIssuerSopsNode.config.sops.secrets."acme/dns-credentials".group == "acme";
-    assert acmeConsumerSopsNode.config.sops.secrets."acme/syncer-private-key".mode == "0400";
-    mkEvalCheck "sops-acme" acmeIssuerSopsNode;
+    assert assertSecret acmeClaimsNode "acme/issuers/primary/dns-credentials" ./tests/sops/acme.json
+      "issuers/primary/dnsCredentials";
+    assert acmeClaimsNode.config.sops.secrets."acme/issuers/primary/dns-credentials".owner == "acme";
+    assert acmeClaimsNode.config.sops.secrets."acme/issuers/primary/dns-credentials".group == "acme";
+    # un nœud sans claim local ne déchiffre aucun secret ACME
+    assert
+      lib.filterAttrs (n: _: lib.hasPrefix "acme/" n) wireguardSopsNode.config.sops.secrets == { };
+    mkEvalCheck "sops-acme" acmeClaimsNode;
   sops-grafana =
     assert assertSecret grafanaSopsNode "grafana/password" ./tests/sops/grafana.json "password";
     assert assertSecret grafanaSopsNode "grafana/secret" ./tests/sops/grafana.json "grafana_secret";
