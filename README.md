@@ -190,6 +190,7 @@ New deployments use SOPS by default.
 | `infect-server`         | Replace the existing OS with NixOS                                   |
 | `init-project`          | Create missing hardware configuration, keys, SOPS files, and secrets |
 | `update-sops-keys`      | Recompute recipients and re-encrypt staged files                     |
+| `update-nixos-release`  | Detect and prepare the latest stable NixOS release                    |
 | `check-project`         | Reject encrypted placeholders, then evaluate Nix and Colmena         |
 | `deploy-project [host]` | Initialize, check, and deploy                                        |
 | `adopt-hardware`        | Fetch hardware configuration from the nodes                          |
@@ -200,6 +201,26 @@ New deployments use SOPS by default.
 `init-project` and `deploy-project` do not overwrite existing secret files.
 Missing external credentials are created as encrypted `CHANGEME` values and
 reported by path.
+
+## Updating NixOS
+
+The public repository owns the NixOS release. The template and private
+repositories follow its `nixpkgs` inputs, while existing machines keep their
+original `system.stateVersion`.
+
+```sh
+# In server-setup: detect the latest official release, update every public
+# version reference and lockfile, then evaluate all systems.
+nix run .#update-nixos-release
+
+# Review, commit and push the public change first. Then, in ovh-infra:
+just update-lib
+```
+
+Use `nix run .#update-nixos-release -- --check` for a read-only check, or pass
+an explicit release such as `26.11`. Release upgrades can still require manual
+module migrations; the command stops when `nix flake check` finds one and never
+deploys a node.
 
 ## 🗂️ Repository layout
 

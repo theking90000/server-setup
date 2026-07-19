@@ -56,6 +56,17 @@ rec {
     text = builtins.readFile ./generate-mesh.sh;
   };
 
+  update-nixos-release = pkgs.writeShellApplication {
+    name = "update-nixos-release";
+    runtimeInputs = [
+      pkgs.coreutils
+      pkgs.curl
+      pkgs.gnused
+      pkgs.nix
+    ];
+    text = builtins.readFile ./update-nixos-release.sh;
+  };
+
   update-sops-keys = pkgs.writeShellApplication {
     name = "update-sops-keys";
     runtimeInputs = [

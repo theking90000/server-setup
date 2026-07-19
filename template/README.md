@@ -82,12 +82,21 @@ Rules:
 |---|---|
 | `init-project` | Prepare or complete the repository without overwriting existing files |
 | `update-sops-keys` | Recompute recipients after a node change |
+| `nix flake update infra` | Follow the NixOS release published by `server-setup` |
 | `check-project` | Check active secrets, config/secret separation, Nix, and Colmena |
 | `deploy-project <host>` | Initialize, check, and deploy a canary |
 | `deploy-project` | Initialize, check, and deploy the entire fleet |
 | `infect-server` | Install NixOS on a fresh Debian server |
 | `adopt-hardware` | Fetch hardware configuration without running the full initialization |
 | `generate-mesh` | Generate missing WireGuard keys |
+
+After a public NixOS release update is published, refresh and validate this
+private repository without changing its existing `system.stateVersion`:
+
+```sh
+nix flake update infra
+check-project
+```
 
 ## Adding a node
 
