@@ -11,7 +11,7 @@
     # nixos-raspberrypi.cachix.org n'a que les builds faits contre LEUR
     # nixpkgs lockée. Suivre la nôtre changerait les hashs → recompilation
     # du kernel sur les Pi.
-    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
+    nixos-raspberrypi.url = "github:nixos-26.05/nixos-raspberrypi/main";
   };
 
   outputs =
@@ -48,6 +48,12 @@
           # Substituter nixos-raspberrypi.cachix.org sur le noeud lui-même
           # (nécessaire avec buildOnTarget = true).
           nixos-raspberrypi.nixosModules.trusted-nix-caches
+          # La nixpkgs des Pi (lock de nixos-raspberrypi) est plus ancienne
+          # que celle de l'infra, or les modules infra référencent les options
+          # kanidm récentes (services.kanidm.server/client). On substitue donc
+          # le module kanidm par celui de la nixpkgs infra.
+          { disabledModules = [ "services/security/kanidm.nix" ]; }
+          "${nixpkgs}/nixos/modules/services/security/kanidm.nix"
         ];
 
         infra.nodeName = name;
