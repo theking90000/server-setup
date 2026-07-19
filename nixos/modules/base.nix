@@ -16,4 +16,11 @@
     dnsutils # dig, nslookup
     tree
   ];
+
+  # Journal systemd : plafond 2G + purge des entrées de plus de 3 mois
+  # (défaut = 4 GiB sans limite d'âge). Le premier seuil atteint gagne.
+  services.journald.extraConfig = ''
+    SystemMaxUse=2G
+    MaxRetentionSec=3month
+  '';
 }
