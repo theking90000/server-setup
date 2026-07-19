@@ -24,6 +24,7 @@
     ../lib/services.nix
     ../lib/ops.nix
     ./nodes.nix
+    ./base.nix
 
     ./applications
     ./backup
