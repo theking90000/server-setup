@@ -79,7 +79,6 @@ and its NixOS hostname.
     sshPort = 22;
     tags = [
       "web-server"
-      "acme-issuer"
       "node-metrics"
       "backup"
     ];
@@ -105,8 +104,7 @@ catch typing errors.
 
 | Tag | Function |
 |---|---|
-| `web-server` | Public Nginx and HTTPS ingress |
-| `acme-issuer` | DNS-01 issuance and certificate distribution |
+| `web-server` | Public Nginx, HTTPS ingress, and local ACME issuance |
 | `node-metrics` | Node Exporter |
 | `prometheus` | Metrics collection |
 | `grafana` | Visualization and dashboards |
@@ -154,11 +152,14 @@ the WireGuard mesh and automatically derives ACME domains from ingresses.
 
 ### OVH credentials for Lego/ACME
 
-The template uses the `ovh` DNS provider. Configure the ACME email address:
+The template uses the `ovh` DNS provider. Configure the issuance policy —
+the suffix covers its apex and every subdomain, and each node issues locally
+the certificates its own services consume:
 
 ```nix
 {
-  infra.acme = {
+  infra.acme.issuers.primary = {
+    match.suffixes = [ "example.com" ];
     email = "admin@example.com";
     dnsProvider = "ovh";
   };
@@ -236,12 +237,11 @@ It performs the following steps idempotently:
 1. generates missing WireGuard key pairs;
 2. fetches hardware configuration;
 3. exports administration SSH public keys;
-4. generates the cert-syncer key pair;
-5. creates or updates the administrator Age identity;
-6. reads each server's host SSH key through an authenticated connection;
-7. generates `.sops.yaml` and transactionally re-encrypts existing files when
+4. creates or updates the administrator Age identity;
+5. reads each server's host SSH key through an authenticated connection;
+6. generates `.sops.yaml` and transactionally re-encrypts existing files when
    recipients have changed;
-8. creates missing standard secret files.
+7. creates missing standard secret files.
 
 An existing secret is never replaced. If a host key cannot be read or
 re-encryption fails, `update-sops-keys` replaces neither the old configuration
@@ -281,8 +281,7 @@ decrypts into a protected temporary file, then writes the encrypted file again.
 | File | Field | Source |
 |---|---|---|
 | `wireguard/<host>.json` | `privateKey` | Generated automatically |
-| `acme.json` | `dnsCredentials` | OVH/Lego credentials to provide |
-| `acme-syncer.json` | `privateKey` | Generated when several nodes exist |
+| `acme.json` | `issuers.<name>.dnsCredentials` | OVH/Lego credentials to provide |
 | `restic.json` | `repository` | Repository URL to provide |
 | `restic.json` | `password` | Generated automatically |
 | `restic.json` | `env` | Backend credentials to provide |

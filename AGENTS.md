@@ -137,7 +137,6 @@ colmena apply --on <host>        # deploy single host
 | `adopt-hardware`     | Download hardware configs from VPS              |
 | `generate-mesh`      | Generate WireGuard mesh keys                    |
 | `export-ssh-key`     | Download host SSH pubkeys                       |
-| `generate-key`       | Generate cert-syncer SSH key (ACME)             |
 | `update-sops-keys`   | Refresh SOPS recipients and encrypted files     |
 | `init-project`       | Prepare a private repo and missing SOPS files    |
 | `check-project`      | Validate secrets, flake and Colmena nodes        |
@@ -154,7 +153,7 @@ colmena apply --on <host>        # deploy single host
 | `nixos/lib/services.nix`             | Service discovery functions                    |
 | `nixos/lib/ops.nix`                  | mkSecretKeys helper                            |
 | `nixos/modules/web/nginx.nix`        | Nginx reverse proxy + ingress → ACME bridge    |
-| `nixos/modules/security/acme.nix`    | ACME cert issuer + cert-syncer                 |
+| `nixos/modules/security/acme.nix`    | ACME issuers + claims, local native issuance   |
 | `nixos/modules/security/kanidm.nix`  | Identity provider (SSO/OIDC/OAuth2/LDAPS)      |
 | `nixos/modules/network/wireguard.nix` | Full mesh VPN via WireGuard                    |
 | `nixos/modules/network/rclone-sync.nix` | Remote mounts via Rclone (no tag, uses targetNodes) |

@@ -143,7 +143,6 @@ The private repository only sets the encrypted secret directory:
 imports = [ infra.nixosModules.default ];
 
 infra.sops.secretsDirectory = ./secrets;
-infra.acme.certSyncerPublicKeyFile = ./inventory/keys/syncer.key.pub;
 ```
 
 Some modules still expose text and `*File` options for compatibility and tests.
@@ -156,8 +155,7 @@ New deployments use SOPS by default.
 | Tag or activation         | Service                                             |
 | ------------------------- | --------------------------------------------------- |
 | Always enabled            | Base networking, OpenSSH, and the WireGuard mesh    |
-| `web-server`              | Public Nginx and HTTPS ingress                      |
-| `acme-issuer`             | DNS-01 certificates and certificate synchronization |
+| `web-server`              | Public Nginx, HTTPS ingress, and local ACME certs   |
 | `backup`                  | Restic backups                                      |
 | `node-metrics`            | Node Exporter                                       |
 | `prometheus`              | Collection of registered scrape targets             |
@@ -196,7 +194,6 @@ New deployments use SOPS by default.
 | `adopt-hardware`        | Fetch hardware configuration from the nodes                          |
 | `generate-mesh`         | Generate missing WireGuard keys                                      |
 | `export-ssh-key`        | Export administration SSH public keys                                |
-| `generate-key`          | Generate the certificate syncer's SSH key pair                       |
 
 `init-project` and `deploy-project` do not overwrite existing secret files.
 Missing external credentials are created as encrypted `CHANGEME` values and

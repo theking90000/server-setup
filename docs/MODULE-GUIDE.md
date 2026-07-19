@@ -260,28 +260,52 @@ A public application contributes to `infra.ingress`:
 
 ```nix
 infra.ingress.myapp = {
-  url = cfg.url;                 # e.g. https://app.example.com/path
-  backend = [ "10.100.0.2:8080" ];
-  blockPaths = [ "/metrics" ];
-  backendTls = false;
-  sslCertificate = null;
+  url = cfg.url;                       # e.g. https://app.example.com/path
+  proxyTo = [ "http://10.100.0.2:8080" ];
+  routes.metrics = {
+    path = "/metrics";
+    nginx.return = "403";
+  };
 };
 ```
 
-`url` takes precedence over `domain` + `path`. Nginx groups entries by domain,
-balances the backends, and associates ACME certificates. Do not configure the
-Nginx virtual host directly from the private repository for a standard
-application.
+The backend scheme in `proxyTo` carries upstream TLS (`https://` enables
+`proxy_ssl_verify off`). Route paths are relative to the base path of the
+endpoint, and the `nginx` fragment of a route uses the native vocabulary of
+`services.nginx.virtualHosts.*.locations.*` for advanced needs (headers,
+timeouts, returns). Endpoints are HTTPS only. Nginx groups entries by host —
+several entries may share one host with distinct routes — generates one ACME
+claim per entry, and wires the certificate through `useACMEHost`. Do not
+configure the Nginx virtual host directly from the private repository for a
+standard application.
 
 ### 4.4 ACME
 
-The `acme.nix` module owns certificate issuance and synchronization. A consumer
-module does not handle DNS credentials. It declares an ingress; Nginx
-contributes the required domains and reloads the certificates.
+The `acme.nix` module resolves certificate claims against the deployment's
+issuance policies (`infra.acme.issuers`, declared in the private repository)
+and issues every certificate locally with the native NixOS `security.acme`
+module. A consumer module never handles DNS credentials: an ingress generates
+its claim automatically, and Nginx reloads after each real renewal.
 
-If a non-Nginx service consumes a certificate directly, add an
-`infra.acme.domains` entry with its service name and optional `postRun` in the
-responsible module.
+If a non-Nginx service consumes a certificate directly, declare a claim and
+read the computed output:
+
+```nix
+infra.acme.claims.myservice = {
+  names = [ "svc.example.com" ];
+  consumer = { kind = "service"; scope = "myservice"; };
+  restartServices = [ "myservice.service" ];
+};
+
+systemd.services.myservice.serviceConfig.LoadCredential =
+  let cert = config.infra.acme.claims.myservice.certificate;
+  in [ "tls_chain:${cert.fullchain}" "tls_key:${cert.key}" ];
+```
+
+Use `restartServices` (not `reloadServices`) for `LoadCredential` consumers:
+systemd only re-reads credentials when the service restarts. The `scope`
+keeps the private key separate from the Nginx wildcard by default; sharing a
+key requires deliberately reusing the same scope.
 
 ## 5. SOPS secrets
 
@@ -321,8 +345,8 @@ Mandatory rules:
 - add a `password` or `passwordFile` option only for existing compatibility or
   a concrete testing need.
 
-`builtins.readFile` remains acceptable for a **public key**, for example the
-cert-syncer public key.
+`builtins.readFile` remains acceptable for a **public key**, for example a
+WireGuard public key from the inventory.
 
 When a service is used by several roles, declare the secret on every node that
 consumes it. Grafana is an example: the OIDC secret is required on both the
