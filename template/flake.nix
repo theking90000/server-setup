@@ -7,10 +7,11 @@
     infra.url = "github:theking90000/server-setup";
     colmena.url = "github:zhaofengli/colmena";
 
-    nixos-raspberrypi = {
-      url = "github:nvmd/nixos-raspberrypi/main";
-      inputs.nixpkgs.follows = "nixpkgs";
-    };
+    # Pas de `inputs.nixpkgs.follows` ici : le cache binaire
+    # nixos-raspberrypi.cachix.org n'a que les builds faits contre LEUR
+    # nixpkgs lockée. Suivre la nôtre changerait les hashs → recompilation
+    # du kernel sur les Pi.
+    nixos-raspberrypi.url = "github:nvmd/nixos-raspberrypi/main";
   };
 
   outputs =
@@ -44,6 +45,9 @@
         ++ lib.optionals (builtins.elem "raspberry-pi" node.tags) [
           nixos-raspberrypi.nixosModules.raspberry-pi-5.base
           nixos-raspberrypi.nixosModules.raspberry-pi-5.page-size-16k
+          # Substituter nixos-raspberrypi.cachix.org sur le noeud lui-même
+          # (nécessaire avec buildOnTarget = true).
+          nixos-raspberrypi.nixosModules.trusted-nix-caches
         ];
 
         infra.nodeName = name;
@@ -87,7 +91,9 @@
             let
               isPi = builtins.elem "raspberry-pi" node.tags;
             in
-            import nixpkgs {
+            # Les Pi utilisent la nixpkgs lockée par nixos-raspberrypi pour
+            # profiter de son cache binaire (kernel vendor pré-compilé).
+            import (if isPi then nixos-raspberrypi.inputs.nixpkgs else nixpkgs) {
               system = if isPi then "aarch64-linux" else "x86_64-linux";
               overlays =
                 lib.optionals isPi [
