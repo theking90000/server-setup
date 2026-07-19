@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <em>Infrastructure as code for plain Linux. A robust, deterministic server fleet without the orchestrator.</em>
+  <em>Infrastructure designed to stay understandable after its author has forgotten how it works.</em>
 </p>
 
 <p align="center">
@@ -11,6 +11,42 @@
   <img alt="Deploy: Colmena" src="https://img.shields.io/badge/deploy-Colmena-4A90D9">
   <img alt="Secrets: SOPS" src="https://img.shields.io/badge/secrets-SOPS-1A7F37?logo=gnuprivacyguard&logoColor=white">
 </p>
+
+## 🧭 Why this exists
+
+Server infrastructure is easy to create and hard to keep maintainable. It
+starts small: install a service, edit two files, add an Nginx rule, note the
+password somewhere. Then the years pass. Versions diverge, files get patched by
+hand, nobody knows exactly which services run where, certificates and backups
+each follow their own logic, and eventually a machine can no longer be rebuilt
+without the memory of the last person who touched it.
+
+Server Setup answers that drift with one rule: **the complete expected state of
+the fleet is described in code, versioned, checked before deployment, and
+reproducible.** Servers are not precious objects to be repaired indefinitely;
+they are replaceable instances of a known configuration.
+
+This is also why there is no admin dashboard here. A dashboard where changes
+happen would recreate the original problem: imperative state, invisible in Git,
+that someone investigates six months later to understand why the server behaves
+the way it does. The goal is not to make manual administration more pleasant,
+but to make it rarely necessary.
+
+Concretely, reading the repository tells you:
+
+- which services exist, and on which machines they run;
+- what they depend on and what network access they have;
+- how ingress, backups, monitoring, secrets and SSO are wired, in one central place;
+- how to rebuild a machine instead of restoring its history by hand;
+- how updates apply uniformly, with inconsistencies caught before deployment.
+
+If you have never inherited a server nobody dares to touch, this may look
+abstract. If you have, the proposition reads in thirty seconds: reduce
+operational entropy. The success criterion is not how impressive a five-minute
+demo looks, but whether, after three years of not thinking about it daily, you
+can still understand, update, repair or rebuild the whole thing.
+
+## 🧱 What it is
 
 Server Setup turns a fleet of fresh Linux servers into a fully declarative
 NixOS deployment. Every server is described in code, reproducible bit for bit,[^repro]
@@ -22,7 +58,7 @@ Each deployment uses a separate private repository generated from `template/`.
 That repository contains the node topology, service configuration, encrypted
 secrets, hardware configuration, and deployment-specific modules.
 
-## Features
+## ✨ Features
 
 - 🧷 **Batteries-included integrations**: ingress, backups, metrics and SSO wire themselves across the fleet through one first-class, stable mechanism
 - 🧬 **Infrastructure as code**: the entire fleet is declarative and version-controlled
@@ -102,30 +138,12 @@ case. The file must still contain valid Nix syntax.
 
 ## 🔒 Service ownership and private configuration
 
-```mermaid
-flowchart LR
-  subgraph Public["Public repo (this)"]
-    M[NixOS modules]
-    C[Commands]
-  end
-  subgraph Private["Private repo (per deployment)"]
-    I[Inventory & tags]
-    S[Encrypted SOPS secrets]
-    H[Hardware config]
-  end
-  Public --> Private
-  Private -->|colmena deploy| F
-  subgraph F["Fleet"]
-    N1[vps1]
-    N2[vps2]
-    N3[vps3]
-  end
-  N1 <-->|WireGuard mesh| N2
-  N2 <-->|WireGuard mesh| N3
-  N1 <-->|WireGuard mesh| N3
-```
+The public repository holds the reusable machinery; each deployment keeps its
+own private repository holding everything specific to it. Colmena deploys the
+combination to the fleet, and the nodes talk to each other over the WireGuard
+mesh.
 
-| Public repository                   | Private repository                                     |
+| Public repository (this)            | Private repository (per deployment)                    |
 | ----------------------------------- | ------------------------------------------------------ |
 | NixOS modules and SOPS declarations | Node inventory and tags                                |
 | `services` and `ops` helpers        | URLs, ports, and feature flags                         |
@@ -199,7 +217,7 @@ New deployments use SOPS by default.
 Missing external credentials are created as encrypted `CHANGEME` values and
 reported by path.
 
-## Updating NixOS
+## ⬆️ Updating NixOS
 
 The public repository owns the NixOS release. The template and private
 repositories follow its `nixpkgs` inputs, while existing machines keep their
