@@ -3,7 +3,7 @@
 #
 # Modules :
 #   - acls         : pare-feu déclaratif par tag (nftables)
-#   - acme         : certificats TLS Let's Encrypt + synchronisation (tag: acme-issuer)
+#   - acme         : certificats TLS Let's Encrypt émis localement (issuers + claims)
 #   - sso          : registre interne des clients et groupes applicatifs
 #   - kanidm       : fournisseur d'identité SSO/OIDC/OAuth2/LDAPS (tag: kanidm)
 #   - oauth2-proxy : SSO par proxy pour les apps sans OIDC natif (auto, sans tag)

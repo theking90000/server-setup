@@ -2,9 +2,9 @@
 # web/default.nix — Modules web / reverse proxy
 #
 # Modules :
-#   - ingress  : déclare l'option `infra.ingress` (routes HTTP)
-#   - nginx    : reverse proxy Nginx + VTS, configure les virtualHosts
-#                à partir de `infra.ingress` et des certificats ACME
+#   - ingress  : déclare l'option `infra.ingress` (endpoints et routes HTTPS)
+#   - nginx    : compilateur ingress → virtualHosts Nginx + VTS, claims
+#                ACME et certificats câblés via useACMEHost
 # -------------------------------------------------------------------------
 {
   imports = [

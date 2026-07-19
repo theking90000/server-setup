@@ -327,16 +327,11 @@ in
           path = "/_synapse/admin";
           nginx.return = "403";
         };
-      };
-    })
-
-    (lib.mkIf (services.hasTag "web-server" && synapseAvailable && publicHost != null) {
-      services.nginx.virtualHosts.${publicHost} = {
-        extraConfig = "client_max_body_size ${cfg.maxUploadSize};";
-        locations."/".extraConfig = ''
+        routes.main.nginx.extraConfig = ''
           proxy_read_timeout 600s;
           proxy_send_timeout 600s;
         '';
+        nginx.extraConfig = "client_max_body_size ${cfg.maxUploadSize};";
       };
     })
 
@@ -357,35 +352,34 @@ in
     })
 
     # Lorsque les MXID utilisent le domaine racine mais que Synapse est servi
-    # sur un sous-domaine, Nginx publie les deux délégations Matrix sur 443.
-    (lib.mkIf (services.hasTag "web-server" && delegated) {
-      services.nginx.virtualHosts.${cfg.serverName} = {
-        serverName = cfg.serverName;
-        forceSSL = true;
-        sslCertificate = "/var/lib/acme/${cfg.serverName}/fullchain.pem";
-        sslCertificateKey = "/var/lib/acme/${cfg.serverName}/key.pem";
-        sslTrustedCertificate = "/var/lib/acme/${cfg.serverName}/chain.pem";
+    # sur un sous-domaine, l'ingress publie les deux délégations Matrix sur
+    # 443. L'entrée se fusionne avec les autres routes du domaine racine
+    # (ex: un site www sur l'apex) dans un même vhost et un même certificat.
+    (lib.mkIf delegated {
+      infra.ingress.synapse-wellknown = {
+        endpoint.host = cfg.serverName;
 
-        locations."= /.well-known/matrix/server" = {
-          return = "200 '${serverWellKnown}'";
-          extraConfig = "default_type application/json;";
+        routes.server = {
+          path = "/.well-known/matrix/server";
+          match = "exact";
+          nginx = {
+            return = "200 '${serverWellKnown}'";
+            extraConfig = "default_type application/json;";
+          };
         };
 
-        locations."= /.well-known/matrix/client" = {
-          return = "200 '${clientWellKnown}'";
-          extraConfig = ''
-            default_type application/json;
-            add_header Access-Control-Allow-Origin "*" always;
-          '';
+        routes.client = {
+          path = "/.well-known/matrix/client";
+          match = "exact";
+          nginx = {
+            return = "200 '${clientWellKnown}'";
+            extraConfig = ''
+              default_type application/json;
+              add_header Access-Control-Allow-Origin "*" always;
+            '';
+          };
         };
       };
-
-      infra.acme.domains = [
-        {
-          domain = cfg.serverName;
-          services = [ "nginx" ];
-        }
-      ];
     })
   ];
 }

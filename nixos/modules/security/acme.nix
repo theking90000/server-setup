@@ -280,14 +280,6 @@ in
       );
     };
 
-    # Transitoire : ancienne API acceptée et ignorée pendant le portage des
-    # modules vers les claims. Supprimée à la fin du portage.
-    domains = lib.mkOption {
-      type = types.listOf types.attrs;
-      default = [ ];
-      internal = true;
-      description = "Obsolète, sans effet.";
-    };
   };
 
   config = lib.mkMerge [

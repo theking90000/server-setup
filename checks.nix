@@ -191,6 +191,11 @@ let
       }
       [
         {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
           infra.grafana = {
             url = "https://grafana.example.test";
             passwordFile = "/run/secrets/grafana/password";
@@ -211,6 +216,11 @@ let
       }
       [
         {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
           infra.gitea.url = "https://git.example.test";
           infra.kanidm.url = "https://auth.example.test";
         }
@@ -560,6 +570,11 @@ let
       }
       [
         {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
           infra.grafana.url = "https://grafana.example.test";
           infra.kanidm.url = "https://auth.example.test";
         }
@@ -640,10 +655,10 @@ in
       c = stableServicesNode.config;
       wildcardCert = c.security.acme.certs."primary-nginx-wildcard-example-test";
     in
-    # les ingress du nœud convergent vers un seul groupe wildcard local
-    # (pas de claim d'apex ici : seul matrix.example.test est exposé)
-    assert wildcardCert.domain == "*.example.test";
-    assert wildcardCert.extraDomainNames == [ ];
+    # les ingress du nœud convergent vers un seul groupe wildcard local ;
+    # la délégation well-known de Synapse apporte le claim d'apex
+    assert wildcardCert.domain == "example.test";
+    assert wildcardCert.extraDomainNames == [ "*.example.test" ];
     assert wildcardCert.group == "nginx";
     assert builtins.elem "nginx.service" wildcardCert.reloadServices;
     assert wildcardCert.environmentFile == "/run/secrets/acme-test";
@@ -854,6 +869,15 @@ in
       (builtins.head synapseSsoNode.config.infra.telemetry.synapse).metrics_path == "/_synapse/metrics";
     assert (builtins.head synapseSsoNode.config.infra.telemetry.synapse).targets == [ "test:9000" ];
     assert lib.hasInfix "matrix.example.test:443" serverDelegation.return;
+    # la délégation apex passe par l'ingress : même groupe wildcard que matrix
+    assert
+      synapseSsoNode.config.services.nginx.virtualHosts."example.test".useACMEHost
+      == "primary-nginx-wildcard-example-test";
+    # kanidm consomme son claim exact via LoadCredential et restart
+    assert builtins.elem "tls_chain:/var/lib/acme/primary-kanidm-exact-auth-example-test/fullchain.pem"
+      synapseSsoNode.config.systemd.services.kanidm.serviceConfig.LoadCredential;
+    assert lib.hasInfix "try-restart kanidm.service"
+      synapseSsoNode.config.security.acme.certs."primary-kanidm-exact-auth-example-test".postRun;
     assert builtins.elem "/var/lib/matrix-synapse" synapseSsoNode.config.infra.backup.paths;
     assert builtins.elem "/var/lib/matrix-synapse-backup" synapseSsoNode.config.infra.backup.paths;
     assert lib.hasInfix "pg_dump" backup.backupPrepareCommand;

@@ -2,9 +2,11 @@
 # kanidm.nix — Kanidm identity provider (SSO / OIDC / OAuth2 / LDAPS)
 #
 # Déploie Kanidm écoutant en HTTPS sur l'IP VPN. Le domaine public est
-# géré via infra.ingress (reverse proxy Nginx HTTPS → HTTPS avec
-# backendTls). Les certificats ACME sont chargés via LoadCredential
-# systemd — pas de service intermédiaire.
+# géré via infra.ingress (reverse proxy Nginx HTTPS → backend HTTPS).
+# Kanidm déclare son propre claim ACME (scope kanidm, certificat exact,
+# clé distincte du wildcard nginx) et charge le certificat via
+# LoadCredential systemd ; le renouvellement redémarre le service, car
+# les credentials ne sont relus qu'au restart.
 #
 # Options exposées pour les autres modules :
 #   - infra.kanidm.url         : URL publique (ex: https://idm.example.com)
@@ -42,8 +44,6 @@ let
     if m != null then builtins.elemAt m 0 else null;
 
   domain = if cfg.url != null then parseDomain cfg.url else null;
-
-  certName = lib.replaceStrings [ "*" ] [ "_" ] domain;
 
   kanidmIps = services.getVpnIpsByTag tag;
 
@@ -286,12 +286,14 @@ in
         acceptInvalidCerts = true;
       };
 
-      infra.acme.domains = [
-        {
-          domain = domain;
-          services = [ "kanidm" ];
-        }
-      ];
+      infra.acme.claims.kanidm = {
+        names = [ domain ];
+        consumer = {
+          kind = "service";
+          scope = "kanidm";
+        };
+        restartServices = [ "kanidm.service" ];
+      };
 
       services.kanidm.server.settings.online_backup = {
         path = "/var/lib/kanidm/backups";
@@ -300,10 +302,14 @@ in
       };
 
       # ── Load ACME certs via systemd credentials ──
-      systemd.services.kanidm.serviceConfig.LoadCredential = [
-        "tls_chain:/var/lib/acme/${certName}/fullchain.pem"
-        "tls_key:/var/lib/acme/${certName}/key.pem"
-      ];
+      systemd.services.kanidm.serviceConfig.LoadCredential =
+        let
+          cert = config.infra.acme.claims.kanidm.certificate;
+        in
+        [
+          "tls_chain:${cert.fullchain}"
+          "tls_key:${cert.key}"
+        ];
 
       # ── Secrets : user passwords ──
       deployment.keys = lib.mkMerge (
