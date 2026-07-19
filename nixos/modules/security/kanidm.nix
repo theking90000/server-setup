@@ -385,9 +385,11 @@ in
     (lib.mkIf (kanidmIps != [ ] && cfg.url != null) {
       infra.ingress."kanidm" = {
         url = cfg.url;
-        backend = map (ip: "${ip}:${toString cfg.port}") kanidmIps;
-        backendTls = true;
-        blockPaths = [ "/metrics" ];
+        proxyTo = map (ip: "https://${ip}:${toString cfg.port}") kanidmIps;
+        routes.metrics = {
+          path = "/metrics";
+          nginx.return = "403";
+        };
       };
     })
 

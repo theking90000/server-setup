@@ -91,8 +91,8 @@ in
     (lib.mkIf (vpnIps != [ ] && cfg.s3Url != null) {
       infra.ingress."rust-storage-streamer-s3" = {
         url = cfg.s3Url;
-        backend = map (ip: "${ip}:${toString s3Port}") vpnIps;
-        locationExtraConfig = ''
+        proxyTo = map (ip: "http://${ip}:${toString s3Port}") vpnIps;
+        routes.main.nginx.extraConfig = ''
           client_max_body_size 0;
           proxy_request_buffering off;
           proxy_buffering off;

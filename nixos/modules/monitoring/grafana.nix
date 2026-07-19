@@ -252,7 +252,7 @@ in
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress."grafana" = {
         url = cfg.url;
-        backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
+        proxyTo = map (ip: "http://${ip}:${toString port}") (services.getVpnIpsByTag tag);
       };
     })
 

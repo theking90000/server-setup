@@ -342,7 +342,7 @@ in
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress.qbittorrent = {
         url = cfg.url;
-        backend = map (ip: "${ip}:${toString cfg.webuiPort}") (services.getVpnIpsByTag tag);
+        proxyTo = map (ip: "http://${ip}:${toString cfg.webuiPort}") (services.getVpnIpsByTag tag);
       };
     })
   ];

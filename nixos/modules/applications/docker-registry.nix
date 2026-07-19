@@ -145,7 +145,7 @@ in
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress."docker-registry" = {
         url = cfg.url;
-        backend = map (ip: "${ip}:${toString servicePort}") (services.getVpnIpsByTag tag);
+        proxyTo = map (ip: "http://${ip}:${toString servicePort}") (services.getVpnIpsByTag tag);
       };
     })
     (lib.mkIf (services.getHostsByTag tag != [ ]) {

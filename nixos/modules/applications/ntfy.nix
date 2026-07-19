@@ -87,8 +87,11 @@ in
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress."ntfy" = {
         url = cfg.url;
-        backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
-        blockPaths = [ "/metrics" ];
+        proxyTo = map (ip: "http://${ip}:${toString port}") (services.getVpnIpsByTag tag);
+        routes.metrics = {
+          path = "/metrics";
+          nginx.return = "403";
+        };
       };
     })
     (lib.mkIf (services.getHostsByTag tag != [ ]) {

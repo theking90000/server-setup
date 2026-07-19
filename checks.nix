@@ -230,6 +230,11 @@ let
       }
       [
         {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
           infra.kanidm.url = "https://auth.example.test";
           infra.restic = {
             repository = "local:/tmp/backup";
@@ -254,6 +259,11 @@ let
       }
       [
         {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
           infra.restic = {
             repository = "local:/tmp/backup";
             password = "test";
@@ -274,6 +284,11 @@ let
       }
       [
         {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
           infra.restic = {
             repository = "local:/tmp/backup";
             password = "test";
@@ -297,6 +312,11 @@ let
       }
       [
         {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
           infra.kanidm.url = "https://auth.example.test";
           infra.qbittorrent.url = "https://qbt.example.test";
         }
@@ -402,6 +422,132 @@ let
         }
       ];
   failedAssertions = node: map (a: a.message) (lib.filter (a: !a.assertion) node.config.assertions);
+  ingressCompilerNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [ "web-server" ];
+        };
+      }
+      [
+        {
+          infra.acme.issuers = {
+            primary = {
+              match.suffixes = [ "example.test" ];
+              email = "test@example.test";
+              dnsProvider = "ovh";
+              dnsCredentialsFile = "/run/secrets/acme-test";
+            };
+            secondary = {
+              match.hosts = [ "special.example.test" ];
+              email = "test@example.test";
+              dnsProvider = "cloudflare";
+              dnsCredentialsFile = "/run/secrets/acme-test2";
+            };
+          };
+          infra.ingress = {
+            app = {
+              url = "https://app.example.test/prefix";
+              proxyTo = "http://127.0.0.1:3000";
+              routes.metrics = {
+                path = "/metrics";
+                nginx.return = "403";
+              };
+              nginx.extraConfig = "client_max_body_size 2G;";
+            };
+            app-ws = {
+              endpoint.host = "app.example.test";
+              endpoint.basePath = "/prefix";
+              routes.ws = {
+                path = "/ws";
+                match = "exact";
+                proxyTo = [
+                  "http://127.0.0.1:3000"
+                  "http://127.0.0.2:3000"
+                ];
+                forwardPath = "strip-prefix";
+              };
+            };
+            secure = {
+              url = "https://secure.example.test";
+              proxyTo = "https://10.0.0.1:8443";
+            };
+            buckets = {
+              endpoint.host = "*.s3.example.test";
+              routes.main = {
+                proxyTo = "http://127.0.0.1:3232";
+                nginx.extraConfig = "proxy_set_header X-Bucket $infra_subdomain;";
+              };
+            };
+            special = {
+              url = "https://special.example.test";
+              proxyTo = "http://127.0.0.1:9999";
+            };
+          };
+        }
+      ];
+  ingressRejectionsNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [ "web-server" ];
+        };
+      }
+      [
+        {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+            dnsCredentialsFile = "/run/secrets/acme-test";
+          };
+          infra.ingress = {
+            plain = {
+              url = "http://plain.example.test";
+              proxyTo = "http://127.0.0.1:1000";
+            };
+            dup-a = {
+              url = "https://dup.example.test";
+              proxyTo = "http://127.0.0.1:1001";
+            };
+            dup-b = {
+              url = "https://dup.example.test";
+              proxyTo = "http://127.0.0.1:1002";
+            };
+            conflict = {
+              url = "https://a.example.test";
+              endpoint.host = "b.example.test";
+              proxyTo = "http://127.0.0.1:1003";
+            };
+            mixed = {
+              url = "https://mixed.example.test";
+              routes.main.proxyTo = [
+                "http://127.0.0.1:1004"
+                "https://127.0.0.1:1005"
+              ];
+            };
+            owned = {
+              url = "https://owned.example.test";
+              routes.main = {
+                proxyTo = "http://127.0.0.1:1006";
+                nginx.proxyPass = "http://elsewhere";
+              };
+            };
+            empty-route = {
+              url = "https://empty.example.test";
+              routes.main = { };
+            };
+            escape = {
+              url = "https://esc.example.test";
+              proxyTo = "http://127.0.0.1:1007";
+              routes.bad = {
+                path = "/../etc";
+                nginx.return = "403";
+              };
+            };
+          };
+        }
+      ];
   grafanaSopsNode =
     mkNode
       {
@@ -489,7 +635,24 @@ in
     assert minimalNode.config.services.openssh.ports == [ 2222 ];
     mkEvalCheck "minimal-module" minimalNode;
   inactive-service-config = mkEvalCheck "inactive-service-config" inactiveServicesNode;
-  stable-services = mkEvalCheck "stable-services" stableServicesNode;
+  stable-services =
+    let
+      c = stableServicesNode.config;
+      wildcardCert = c.security.acme.certs."primary-nginx-wildcard-example-test";
+    in
+    # les ingress du nœud convergent vers un seul groupe wildcard local
+    # (pas de claim d'apex ici : seul matrix.example.test est exposé)
+    assert wildcardCert.domain == "*.example.test";
+    assert wildcardCert.extraDomainNames == [ ];
+    assert wildcardCert.group == "nginx";
+    assert builtins.elem "nginx.service" wildcardCert.reloadServices;
+    assert wildcardCert.environmentFile == "/run/secrets/acme-test";
+    assert c.security.acme.maxConcurrentRenewals == 1;
+    assert
+      c.services.nginx.virtualHosts."matrix.example.test".useACMEHost
+      == "primary-nginx-wildcard-example-test";
+    assert c.services.nginx.virtualHosts."matrix.example.test".forceSSL;
+    mkEvalCheck "stable-services" stableServicesNode;
   file-secrets =
     assert fileSecretsNode.config.sops.secrets == { };
     assert rcloneMount != null;
@@ -674,8 +837,13 @@ in
     assert lib.hasInfix "--locale=C" synapseSsoNode.config.systemd.services.postgresql-setup.script;
     assert builtins.elem "oidc_client_secret:/run/secrets/sso/synapse-client-secret"
       synapseSsoNode.config.systemd.services.matrix-synapse.serviceConfig.LoadCredential;
-    assert synapseSsoNode.config.infra.ingress.synapse.backend == [ "10.100.0.1:8008" ];
-    assert synapseSsoNode.config.infra.ingress.synapse.blockPaths == [ "/_synapse/admin" ];
+    assert synapseSsoNode.config.infra.ingress.synapse.proxyTo == [ "http://10.100.0.1:8008" ];
+    assert
+      synapseSsoNode.config.services.nginx.virtualHosts."matrix.example.test".locations."/_synapse/admin".return
+      == "403";
+    assert
+      synapseSsoNode.config.services.nginx.virtualHosts."matrix.example.test".useACMEHost
+      == "primary-nginx-wildcard-example-test";
     assert lib.hasInfix "client_max_body_size 100M"
       synapseSsoNode.config.services.nginx.virtualHosts."matrix.example.test".extraConfig;
     assert lib.hasInfix "proxy_read_timeout 600s"
@@ -719,8 +887,8 @@ in
       filesUnit.serviceConfig.LoadCredential;
     assert builtins.elem "webhooks:/run/secrets/rust-storage-streamer/webhooks"
       s3Unit.serviceConfig.LoadCredential;
-    assert ingress.backend == [ "10.100.0.1:8081" ];
-    assert lib.hasInfix "proxy_request_buffering off" ingress.locationExtraConfig;
+    assert ingress.proxyTo == [ "http://10.100.0.1:8081" ];
+    assert lib.hasInfix "proxy_request_buffering off" ingress.routes.main.nginx.extraConfig;
     assert lib.hasInfix "client_max_body_size 0" nginxLocation.extraConfig;
     assert lib.any (
       rule: rule.port == 8081 && rule.allowedTags == [ "web-server" ]
@@ -776,7 +944,7 @@ in
     assert (builtins.head qbittorrentNode.config.infra.telemetry.qbittorrent).labels.host == "test";
     assert builtins.elem ./nixos/modules/applications/dashboards/qbittorrent.json
       qbittorrentNode.config.infra.grafana.dashboards;
-    assert qbittorrentNode.config.infra.ingress.qbittorrent.backend == [ "10.100.0.1:8080" ];
+    assert qbittorrentNode.config.infra.ingress.qbittorrent.proxyTo == [ "http://10.100.0.1:8080" ];
     assert builtins.elem "/var/lib/qBittorrent" qbittorrentNode.config.infra.backup.paths;
     # sans kanidm : pas de bypass d'auth, le mot de passe reste exigé
     assert !lib.hasInfix "AuthSubnetWhitelist=10.200.0.0/30"
@@ -884,6 +1052,61 @@ in
     assert hasError "an exact claim must declare exactly one name";
     assert hasError "ambiguous ACME issuers for 'dup.example.test'";
     checkPkgs.runCommand "acme-rejections" { } ''touch "$out"'';
+  ingress-compiler =
+    let
+      c = ingressCompilerNode.config;
+      appVhost = c.services.nginx.virtualHosts."app.example.test";
+      secureVhost = c.services.nginx.virtualHosts."secure.example.test";
+      bucketVhost = c.services.nginx.virtualHosts."*.s3.example.test";
+    in
+    # deux entrées sur le même hôte fusionnent en un vhost, routes distinctes
+    assert appVhost.locations ? "/prefix/";
+    assert appVhost.locations ? "/prefix/metrics";
+    assert appVhost.locations ? "= /prefix/ws";
+    assert appVhost.locations."/prefix/".proxyPass == "http://ig-app-main";
+    assert appVhost.locations."/prefix/metrics".return == "403";
+    # strip-prefix : slash final sur l'upstream
+    assert appVhost.locations."= /prefix/ws".proxyPass == "http://ig-app-ws-ws/";
+    assert
+      builtins.attrNames c.services.nginx.upstreams."ig-app-ws-ws".servers == [
+        "127.0.0.1:3000"
+        "127.0.0.2:3000"
+      ];
+    assert appVhost.forceSSL;
+    assert appVhost.useACMEHost == "primary-nginx-wildcard-example-test";
+    assert lib.hasInfix "client_max_body_size 2G" appVhost.extraConfig;
+    # backend https : schéma porté par proxyTo, proxy_ssl_verify off
+    assert secureVhost.locations."/".proxyPass == "https://ig-secure-main";
+    assert lib.hasInfix "proxy_ssl_verify off" secureVhost.locations."/".extraConfig;
+    # wildcard : server_name regex limité à un label, capture disponible
+    assert bucketVhost.serverName == "~^(?<infra_subdomain>[^.]+)\\.s3\\.example\\.test$";
+    assert bucketVhost.useACMEHost == "primary-nginx-wildcard-s3-example-test";
+    assert lib.hasInfix "X-Bucket $infra_subdomain" bucketVhost.locations."/".extraConfig;
+    # hôte exact prioritaire : émetteur secondary, couverture exacte
+    assert
+      c.infra.acme.claims."ingress-special".certificate.name
+      == "secondary-nginx-exact-special-example-test";
+    assert
+      c.services.nginx.virtualHosts."special.example.test".useACMEHost
+      == "secondary-nginx-exact-special-example-test";
+    # groupes émis localement pour les deux émetteurs
+    assert c.security.acme.certs ? "primary-nginx-wildcard-example-test";
+    assert c.security.acme.certs."primary-nginx-wildcard-example-test".group == "nginx";
+    assert c.security.acme.certs."secondary-nginx-exact-special-example-test".dnsProvider == "cloudflare";
+    mkEvalCheck "ingress-compiler" ingressCompilerNode;
+  ingress-rejections =
+    let
+      messages = failedAssertions ingressRejectionsNode;
+      hasError = infix: lib.any (lib.hasInfix infix) messages;
+    in
+    assert hasError "url must be HTTPS";
+    assert hasError "duplicate route for 'dup.example.test /'";
+    assert hasError "conflicts with endpoint.host 'b.example.test'";
+    assert hasError "backends mix http and https schemes";
+    assert hasError "proxyPass is owned by the compiler";
+    assert hasError "route needs proxyTo or a nginx fragment";
+    assert hasError "invalid path '/../etc'";
+    checkPkgs.runCommand "ingress-rejections" { } ''touch "$out"'';
   sops-acme =
     assert assertSecret acmeClaimsNode "acme/issuers/primary/dns-credentials" ./tests/sops/acme.json
       "issuers/primary/dnsCredentials";

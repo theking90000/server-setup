@@ -148,7 +148,7 @@ in
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress."www" = {
         url = cfg.url;
-        backend = map (ip: "${ip}:${toString cfg.port}") (services.getVpnIpsByTag tag);
+        proxyTo = map (ip: "http://${ip}:${toString cfg.port}") (services.getVpnIpsByTag tag);
       };
     })
   ];

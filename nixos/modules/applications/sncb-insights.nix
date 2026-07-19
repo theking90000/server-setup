@@ -161,7 +161,7 @@ in
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && config.infra.sncb-insights.url != null) {
       infra.ingress."sncb-insights" = {
         url = config.infra.sncb-insights.url;
-        backend = map (ip: "${ip}:${toString port}") (services.getVpnIpsByTag tag);
+        proxyTo = map (ip: "http://${ip}:${toString port}") (services.getVpnIpsByTag tag);
       };
     })
   ];

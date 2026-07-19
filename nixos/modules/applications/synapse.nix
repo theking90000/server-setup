@@ -322,8 +322,11 @@ in
     (lib.mkIf (synapseIps != [ ] && cfg.url != null) {
       infra.ingress.synapse = {
         url = cfg.url;
-        backend = map (ip: "${ip}:${toString cfg.port}") synapseIps;
-        blockPaths = [ "/_synapse/admin" ];
+        proxyTo = map (ip: "http://${ip}:${toString cfg.port}") synapseIps;
+        routes.admin = {
+          path = "/_synapse/admin";
+          nginx.return = "403";
+        };
       };
     })
 
