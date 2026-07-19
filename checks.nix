@@ -27,7 +27,7 @@ let
           infra.nodes = nodes;
           infra.sops.secretsDirectory = ./tests/sops;
           sops.validateSopsFiles = false;
-          system.stateVersion = "25.11";
+          system.stateVersion = "26.05";
         }
       ]
       ++ extraModules;

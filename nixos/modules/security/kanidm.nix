@@ -260,7 +260,7 @@ in
 
     # ── Kanidm server (per-node, URL required) ──
     (lib.mkIf (enabled && cfg.url != null) {
-      services.kanidm.enableServer = true;
+      services.kanidm.server.enable = true;
 
       environment.systemPackages = [
         kanidmPackage
@@ -268,7 +268,7 @@ in
 
       services.kanidm.package = kanidmPackage;
 
-      services.kanidm.serverSettings = {
+      services.kanidm.server.settings = {
         bindaddress = "${services.getVpnIp}:${toString cfg.port}";
         origin = cfg.url;
         domain = domain;
@@ -276,7 +276,7 @@ in
         tls_key = "/run/credentials/kanidm.service/tls_key";
       };
 
-      services.kanidm.clientSettings = {
+      services.kanidm.client.settings = {
         uri = cfg.url;
       };
 
@@ -293,7 +293,7 @@ in
         }
       ];
 
-      services.kanidm.serverSettings.online_backup = {
+      services.kanidm.server.settings.online_backup = {
         path = "/var/lib/kanidm/backups";
         schedule = "00 22 * * *";
         versions = 7;
@@ -335,7 +335,7 @@ in
 
     # ── LDAPS bind address (per-node, optional) ──
     (lib.mkIf (enabled && cfg.url != null && ldapsConfig) {
-      services.kanidm.serverSettings.ldapbindaddress = "${services.getVpnIp}:${toString cfg.ldapPort}";
+      services.kanidm.server.settings.ldapbindaddress = "${services.getVpnIp}:${toString cfg.ldapPort}";
     })
 
     # ── User provisioning → kanidm persons ──

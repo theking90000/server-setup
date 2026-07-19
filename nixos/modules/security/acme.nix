@@ -247,7 +247,7 @@ in
           map (certOpts: {
             "${certName certOpts.domain}" = {
               dnsProvider = getVal certOpts.dnsProvider cfg.dnsProvider;
-              credentialsFile = getVal certOpts.credentialsFile dnsCredentialsPath;
+              environmentFile = getVal certOpts.credentialsFile dnsCredentialsPath;
 
               group = "cert-syncer";
 

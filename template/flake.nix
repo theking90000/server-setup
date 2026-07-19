@@ -2,8 +2,8 @@
   description = "Déploiement de l'infrastructure privée";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-25.11";
-    nixpkgs-darwin.url = "github:NixOS/nixpkgs/nixpkgs-25.11-darwin";
+    nixpkgs.follows = "infra/nixpkgs";
+    nixpkgs-darwin.follows = "infra/nixpkgs-darwin";
     infra.url = "github:theking90000/server-setup";
     colmena.url = "github:zhaofengli/colmena";
 
@@ -59,7 +59,9 @@
           }) nodesData.nodes)
         ];
 
-        system.stateVersion = if builtins.elem "raspberry-pi" node.tags then "25.05" else "23.11";
+        # Initial state version for machines created from this template. Never
+        # advance it in an existing private repository.
+        system.stateVersion = "26.05";
 
         deployment = {
           targetHost = node.publicIp;

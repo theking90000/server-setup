@@ -176,6 +176,7 @@ in
         scope = "openid profile email";
         email.domains = [ "*" ];
         reverseProxy = true;
+        trustedProxyIP = [ "127.0.0.1/32" ];
         setXauthrequest = true;
         cookie = {
           domain = cookieDomain;
