@@ -50,8 +50,8 @@ The complete guide is available in the public repository:
    ```
 
 `init-project` fetches the hardware configuration and host SSH keys, generates
-the WireGuard and cert-syncer keys, maintains `.sops.yaml`, then creates only
-the missing standard secrets. It never replaces an existing secret.
+the WireGuard keys, maintains `.sops.yaml`, then creates only the missing
+standard secrets. It never replaces an existing secret.
 
 ## What to change where
 

@@ -15,7 +15,6 @@ fi
 generate-mesh
 adopt-hardware
 export-ssh-key
-generate-key
 update-sops-keys
 
 case "$(uname -s)" in
@@ -57,15 +56,17 @@ while IFS= read -r HOSTNAME; do
   encrypt_new "$TMP/wireguard-$HOSTNAME.json" "secrets/wireguard/$HOSTNAME.json"
 done < <(jq -r '.nodes | keys[]' <<< "$NODES")
 
-if has_tag "acme-issuer"; then
-  jq -n '{dnsCredentials: "OVH_ENDPOINT=ovh-eu\nOVH_APPLICATION_KEY=CHANGEME\nOVH_APPLICATION_SECRET=CHANGEME\nOVH_CONSUMER_KEY=CHANGEME"}' > "$TMP/acme.json"
+# Credentials DNS par émetteur ACME : requis dès qu'un nœud consomme des
+# certificats (ingress web-server ou service direct comme kanidm).
+if has_tag "web-server" || has_tag "kanidm"; then
+  mapfile -t ISSUERS < <(
+    rg -o 'issuers\.([A-Za-z0-9-]+)' -r '$1' config/acme/*.nix 2> /dev/null | sort -u
+  )
+  [ "${#ISSUERS[@]}" -gt 0 ] || ISSUERS=(primary)
+  printf '%s\n' "${ISSUERS[@]}" \
+    | jq -Rn '{issuers: [inputs | select(length > 0) | {key: ., value: {dnsCredentials: "OVH_ENDPOINT=ovh-eu\nOVH_APPLICATION_KEY=CHANGEME\nOVH_APPLICATION_SECRET=CHANGEME\nOVH_CONSUMER_KEY=CHANGEME"}}] | from_entries}' \
+    > "$TMP/acme.json"
   encrypt_new "$TMP/acme.json" secrets/acme.json
-
-  if [ "$(jq '.nodes | length' <<< "$NODES")" -gt 1 ]; then
-    jq -n --rawfile privateKey inventory/keys/syncer.key \
-      '{privateKey: $privateKey}' > "$TMP/acme-syncer.json"
-    encrypt_new "$TMP/acme-syncer.json" secrets/acme-syncer.json
-  fi
 fi
 
 if has_tag "backup"; then

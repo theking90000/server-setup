@@ -37,14 +37,6 @@ rec {
     text = builtins.readFile ./export-ssh-key.sh;
   };
 
-  generate-key = pkgs.writeShellApplication {
-    name = "generate-key";
-    runtimeInputs = [
-      pkgs.openssh
-    ];
-    text = builtins.readFile ./generate-key.sh;
-  };
-
   generate-mesh = pkgs.writeShellApplication {
     name = "generate-mesh";
     runtimeInputs = [
@@ -88,7 +80,6 @@ rec {
     runtimeInputs = [
       adopt-hardware
       export-ssh-key
-      generate-key
       generate-mesh
       update-sops-keys
       pkgs.findutils

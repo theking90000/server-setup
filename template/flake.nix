@@ -49,7 +49,6 @@
         infra.nodeName = name;
 
         infra.sops.secretsDirectory = ./secrets;
-        infra.acme.certSyncerPublicKeyFile = ./inventory/keys/syncer.key.pub;
 
         infra.nodes = lib.mkMerge [
           nodesData.nodes
@@ -136,7 +135,6 @@
               infra.packages.${system}.infect
               infra.packages.${system}.adopt-hardware
               infra.packages.${system}.export-ssh-key
-              infra.packages.${system}.generate-key
               infra.packages.${system}.generate-mesh
               infra.packages.${system}.update-sops-keys
               infra.packages.${system}.init-project
