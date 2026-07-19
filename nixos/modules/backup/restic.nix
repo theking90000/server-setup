@@ -138,11 +138,16 @@ in
         passwordFile = passwordPath;
         paths = backupPaths;
 
+        # ponytail: dépôt partagé entre nœuds, tous à 03:00 -> attendre le
+        # verrou plutôt qu'échouer. Décaler les timers si les backups traînent.
+        extraBackupArgs = [ "--retry-lock 2h" ];
+
         backupPrepareCommand = lib.mkIf (backupPrepareCommands != [ ]) (
           lib.concatStringsSep "\n" backupPrepareCommands
         );
 
         pruneOpts = [
+          "--retry-lock 6h"
           "--keep-daily 7"
           "--keep-weekly 4"
           "--keep-monthly 6"
@@ -150,6 +155,9 @@ in
 
         timerConfig = {
           OnCalendar = "03:00";
+          # ponytail: étale les démarrages sur les nœuds partageant le dépôt
+          # pour réduire la collision de verrou en amont du --retry-lock.
+          RandomizedDelaySec = "30min";
           Persistent = true;
         };
       }
