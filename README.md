@@ -14,37 +14,39 @@
 
 ## 🧭 Why this exists
 
-Server infrastructure is easy to create and hard to keep maintainable. It
-starts small: install a service, edit two files, add an Nginx rule, note the
-password somewhere. Then the years pass. Versions diverge, files get patched by
-hand, nobody knows exactly which services run where, certificates and backups
-each follow their own logic, and eventually a machine can no longer be rebuilt
-without the memory of the last person who touched it.
+Setting up a server is easy. Keeping it understandable for years is not. It
+starts small: install a service, edit two files, add an Nginx rule, write the
+password down somewhere. Then time passes. Versions drift apart, files get
+edited by hand, nobody remembers exactly which services run where, certificates
+and backups each work their own way, and one day a machine can no longer be
+rebuilt without the memory of the last person who touched it.
 
-Server Setup answers that drift with one rule: **the complete expected state of
-the fleet is described in code, versioned, checked before deployment, and
-reproducible.** Servers are not precious objects to be repaired indefinitely;
-they are replaceable instances of a known configuration.
+Server Setup takes a different approach: **everything the fleet is supposed to
+run is written down as code, versioned, checked before deployment, and
+reproducible.** A server stops being a fragile thing you keep repairing and
+becomes a copy of a known configuration that you can rebuild at any time.
 
-This is also why there is no admin dashboard here. A dashboard where changes
-happen would recreate the original problem: imperative state, invisible in Git,
-that someone investigates six months later to understand why the server behaves
-the way it does. The goal is not to make manual administration more pleasant,
-but to make it rarely necessary.
+Unlike most management solutions, there is no admin dashboard here, and that
+is deliberate. A dashboard where you click to change things would bring the
+problem right back: the real configuration would
+no longer match the repository, and six months later you would be digging
+through the server to understand why it behaves the way it does. The goal is
+not to make manual administration nicer, but to make it rarely needed.
 
-Concretely, reading the repository tells you:
+In practice, reading the repository is enough to know:
 
-- which services exist, and on which machines they run;
-- what they depend on and what network access they have;
-- how ingress, backups, monitoring, secrets and SSO are wired, in one central place;
-- how to rebuild a machine instead of restoring its history by hand;
-- how updates apply uniformly, with inconsistencies caught before deployment.
+- which services exist and on which machines they run;
+- what they depend on and what they can reach on the network;
+- how ingress, backups, monitoring, secrets and SSO are connected, in one place;
+- how to rebuild a machine instead of piecing its history back together;
+- that updates apply the same way everywhere, and mistakes are caught before
+  deployment.
 
-If you have never inherited a server nobody dares to touch, this may look
-abstract. If you have, the proposition reads in thirty seconds: reduce
-operational entropy. The success criterion is not how impressive a five-minute
-demo looks, but whether, after three years of not thinking about it daily, you
-can still understand, update, repair or rebuild the whole thing.
+If you have never inherited a server nobody dares to touch, this may sound
+abstract. If you have, you will recognize the problem right away. The goal is
+not to look impressive in a five-minute demo, but to still be able to
+understand, update, repair or rebuild everything after three years of not
+thinking about it every day.
 
 ## 🧱 What it is
 
@@ -55,12 +57,12 @@ Nodes join a private WireGuard mesh and automatically get HTTPS ingress, single
 sign-on, encrypted secrets, backups and monitoring.
 
 Each deployment uses a separate private repository generated from `template/`.
-That repository contains the node topology, service configuration, encrypted
-secrets, hardware configuration, and deployment-specific modules.
+It contains the list of nodes, the service configuration, the encrypted
+secrets, the hardware configuration, and any deployment-specific modules.
 
 ## ✨ Features
 
-- 🧷 **Batteries-included integrations**: ingress, backups, metrics and SSO wire themselves across the fleet through one first-class, stable mechanism
+- 🧷 **Batteries-included integrations**: ingress, backups, metrics and SSO connect themselves across the fleet through one stable mechanism
 - 🧬 **Infrastructure as code**: the entire fleet is declarative and version-controlled
 - 🪨 **Robust & deterministic**: plain systemd on NixOS, reproducible builds
 - 🌐 **Private mesh**: every node joins an encrypted WireGuard network automatically
@@ -71,19 +73,19 @@ secrets, hardware configuration, and deployment-specific modules.
 
 ## 🚀 Quick start
 
-Requirements: Nix, an SSH key, a fresh Linux server, and credentials for the
-enabled external services.
+You need Nix, an SSH key, a fresh Linux server, and credentials for the
+external services you enable.
 
 > [!WARNING]
 > `infect-server` **replaces the server's operating system**. Only run it on a
 > machine you intend to wipe.
 
 > [!NOTE]
-> The starting OS is not tied to Debian. Onboarding runs through `infect-server`
-> (built on `nixos-infect`), so any host that tool can convert works. After
-> infection the node runs standard NixOS on x86_64 or arm64, Raspberry Pi 5
-> included. Tested so far on OVH VPS provisioned with Debian and on a Raspberry
-> Pi 5 running Raspberry Pi OS.
+> The starting OS does not have to be Debian. Onboarding goes through
+> `infect-server` (built on `nixos-infect`), so any host that tool can convert
+> will work. After infection the node runs standard NixOS on x86_64 or arm64,
+> including the Raspberry Pi 5. Tested so far on OVH VPS shipped with Debian
+> and on a Raspberry Pi 5 running Raspberry Pi OS.
 
 ```sh
 # Create the private repository
@@ -113,33 +115,34 @@ SOPS, secrets, checks, deployment, and routine operations.
 
 ## 🧩 How modules configure the fleet
 
-Cross-fleet integration is a first-class, stable part of the design, not an
-add-on. A module declares what it needs, and the shared services wire it up
-across every node.
+Services do not need hand-written glue to work together. A module declares
+what its service needs, and the shared services pick those declarations up
+across the whole fleet.
 
 Each node has tags. The module that registers a tag:
 
-1. enables the service on matching nodes;
-2. declares its SOPS secret and runtime consumer;
-3. binds the service to the WireGuard mesh;
+1. enables the service on the nodes that carry the tag;
+2. declares the secret it needs and which process reads it;
+3. connects the service to the WireGuard mesh;
 4. registers its ACLs, ingress, backups, metrics, dashboards, and SSO clients;
 5. lets Nginx, Restic, Prometheus, Grafana, and Kanidm collect these
    declarations.
 
-Scope determines which guard a module uses:
+A module uses one of two kinds of helpers, depending on where the
+configuration applies:
 
-- `services.hasTag tag` guards configuration for the current node.
-- `services.getHostsByTag tag` and `getVpnIpsByTag tag` discover nodes across
-  the fleet for cross-node declarations.
+- `services.hasTag tag` checks whether the current node has the tag.
+- `services.getHostsByTag tag` and `getVpnIpsByTag tag` find the nodes that
+  have it, anywhere in the fleet.
 
-A file under `config/` can remain imported without configuration while no node
-has its service tag. Its placeholders and values are not evaluated in that
-case. The file must still contain valid Nix syntax.
+A file under `config/` can stay imported even when no node uses its service
+tag. Its values are simply not evaluated in that case. The file only needs to
+be valid Nix syntax.
 
 ## 🔒 Service ownership and private configuration
 
-The public repository holds the reusable machinery; each deployment keeps its
-own private repository holding everything specific to it. Colmena deploys the
+The public repository holds the reusable machinery. Each deployment keeps a
+private repository with everything specific to it. Colmena deploys the
 combination to the fleet, and the nodes talk to each other over the WireGuard
 mesh.
 
@@ -150,12 +153,12 @@ mesh.
 | Bootstrap and deployment commands   | Encrypted SOPS JSON files                              |
 | Template and synthetic checks       | Hardware configuration and deployment-specific modules |
 
-`infra.nixosModules.default` imports `sops-nix`. A private repository does not
-need a separate SOPS module or a central adapter. `grafana.nix` declares both
-the Grafana service and its secret. Each public service module follows the same
-ownership rule.
+`infra.nixosModules.default` imports `sops-nix`, so a private repository does
+not need its own SOPS module or a central adapter. Each public module owns
+both its service and its secrets: `grafana.nix`, for example, declares the
+Grafana service and the secret it uses.
 
-The private repository only sets the encrypted secret directory:
+The private repository only has to point at its encrypted secrets:
 
 ```nix
 imports = [ infra.nixosModules.default ];
@@ -163,8 +166,8 @@ imports = [ infra.nixosModules.default ];
 infra.sops.secretsDirectory = ./secrets;
 ```
 
-Some modules still expose text and `*File` options for compatibility and tests.
-New deployments use SOPS by default.
+Some modules still expose plain-text and `*File` options for compatibility and
+tests. New deployments use SOPS by default.
 
 ## 📦 Available roles
 
@@ -213,9 +216,9 @@ New deployments use SOPS by default.
 | `generate-mesh`         | Generate missing WireGuard keys                                      |
 | `export-ssh-key`        | Export administration SSH public keys                                |
 
-`init-project` and `deploy-project` do not overwrite existing secret files.
-Missing external credentials are created as encrypted `CHANGEME` values and
-reported by path.
+`init-project` and `deploy-project` never overwrite existing secret files.
+Missing external credentials are created as encrypted `CHANGEME` values, and
+their paths are reported so you know what to fill in.
 
 ## ⬆️ Updating NixOS
 
@@ -233,9 +236,9 @@ just update-lib
 ```
 
 Use `nix run .#update-nixos-release -- --check` for a read-only check, or pass
-an explicit release such as `26.11`. Release upgrades can still require manual
-module migrations; the command stops when `nix flake check` finds one and never
-deploys a node.
+an explicit release such as `26.11`. A release upgrade can still require manual
+module changes; when `nix flake check` finds one, the command stops and never
+deploys anything.
 
 ## 🗂️ Repository layout
 
@@ -269,10 +272,10 @@ deploys a node.
 
 ## ✅ Development and checks
 
-A public module owns all integrations for its service. The
-[module guide](docs/MODULE-GUIDE.md) provides the module skeleton, scope rules,
-and checks for networking, secrets, ingress, backups, metrics, dashboards, and
-SSO.
+A public module owns all the integrations for its service. The
+[module guide](docs/MODULE-GUIDE.md) provides the module skeleton, the scope
+rules, and the checks for networking, secrets, ingress, backups, metrics,
+dashboards, and SSO.
 
 ```sh
 # Public repository
@@ -282,11 +285,11 @@ nix flake check --all-systems
 check-project
 ```
 
-After a deployment change passes evaluation, deploy it to one canary before
-running `deploy-project` for the full fleet.
+Once a change passes evaluation, deploy it to a single canary node before
+running `deploy-project` for the whole fleet.
 
-[^repro]: Reproducibility covers the system itself: on a fresh install the same
-    configuration rebuilds an identical machine. Runtime user data (databases,
-    uploads, application state) lives outside that guarantee. It is covered
-    separately by Restic backups, and in most cases a healthy backup restores
-    the data in a handful of commands, often a single one.
+[^repro]: Reproducibility covers the system itself: the same configuration on a
+    fresh install rebuilds an identical machine. User data (databases, uploads,
+    application state) is not part of that guarantee. It is covered by the
+    Restic backups instead, and in most cases a healthy backup restores the
+    data in a couple of commands, often just one.
