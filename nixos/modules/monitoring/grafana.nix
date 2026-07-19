@@ -233,7 +233,7 @@ in
         ];
 
         provision.datasources.settings.datasources = map (host: {
-          name = "Prometheus ${host}";
+          name = "Prometheus";
           type = "prometheus";
           url = "http://${host}:9090";
         }) (services.getHostsByTag "prometheus");

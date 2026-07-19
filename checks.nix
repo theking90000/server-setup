@@ -654,6 +654,7 @@ in
     let
       c = stableServicesNode.config;
       wildcardCert = c.security.acme.certs."primary-nginx-wildcard-example-test";
+      grafanaDatasources = c.services.grafana.provision.datasources.settings.datasources;
     in
     # les ingress du nœud convergent vers un seul groupe wildcard local ;
     # la délégation well-known de Synapse apporte le claim d'apex
@@ -663,6 +664,7 @@ in
     assert builtins.elem "nginx.service" wildcardCert.reloadServices;
     assert wildcardCert.environmentFile == "/run/secrets/acme-test";
     assert c.security.acme.maxConcurrentRenewals == 1;
+    assert map (datasource: datasource.name) grafanaDatasources == [ "Prometheus" ];
     assert
       c.services.nginx.virtualHosts."matrix.example.test".useACMEHost
       == "primary-nginx-wildcard-example-test";
