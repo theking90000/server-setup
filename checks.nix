@@ -142,6 +142,7 @@ let
           infra.dockerRegistry.accounts = "test:test";
           infra.grafana.password = "test";
           infra.grafana.grafanaSecret = "test";
+          infra.jellyfin.url = "https://jellyfin.example.test";
           infra.restic.repository = "local:/tmp/backup";
           infra.restic.password = "test";
           infra.sncb-insights.package = checkPkgs.writeShellScriptBin "sncb-insights" "exit 0";
@@ -655,6 +656,9 @@ in
       c = stableServicesNode.config;
       wildcardCert = c.security.acme.certs."primary-nginx-wildcard-example-test";
       grafanaDatasources = c.services.grafana.provision.datasources.settings.datasources;
+      jellyfinAcl = lib.findFirst (acl: acl.description == "Jellyfin") null c.infra.security.acls;
+      jellyfinTelemetry = builtins.head c.infra.telemetry.jellyfin;
+      jellyfinVhost = c.services.nginx.virtualHosts."jellyfin.example.test";
     in
     # les ingress du nœud convergent vers un seul groupe wildcard local ;
     # la délégation well-known de Synapse apporte le claim d'apex
@@ -669,6 +673,19 @@ in
       c.services.nginx.virtualHosts."matrix.example.test".useACMEHost
       == "primary-nginx-wildcard-example-test";
     assert c.services.nginx.virtualHosts."matrix.example.test".forceSSL;
+    assert c.services.jellarr.enable;
+    assert c.services.jellarr.config.system.enableMetrics;
+    assert c.services.jellarr.config.base_url == "http://127.0.0.1:8096";
+    assert c.services.jellarr.bootstrap.enable;
+    assert c.services.jellarr.bootstrap.apiKeyFile == "/run/secrets/jellyfin/jellarr-api-key";
+    assert builtins.elem "multi-user.target" c.systemd.services.jellarr.wantedBy;
+    assert builtins.elem "jellarr-api-key-bootstrap.service" c.systemd.services.jellarr.after;
+    assert builtins.elem "jellyfin.service" c.systemd.services.jellarr-api-key-bootstrap.after;
+    assert jellyfinAcl != null;
+    assert builtins.elem "prometheus" jellyfinAcl.allowedTags;
+    assert jellyfinTelemetry.targets == [ "test:8096" ];
+    assert jellyfinTelemetry.labels.host == "test";
+    assert jellyfinVhost.locations."/metrics".return == "403";
     mkEvalCheck "stable-services" stableServicesNode;
   file-secrets =
     assert fileSecretsNode.config.sops.secrets == { };
@@ -1149,6 +1166,13 @@ in
       "oidc_client_secret";
     assert grafanaSopsNode.config.sops.secrets."sso/grafana-client-secret".owner == "kanidm";
     mkEvalCheck "sops-grafana" grafanaSopsNode;
+  sops-jellyfin =
+    assert assertSecret stableServicesNode "jellyfin/jellarr-api-key" ./tests/sops/jellyfin.json
+      "jellarr_api_key";
+    assert stableServicesNode.config.sops.secrets."jellyfin/jellarr-api-key".mode == "0400";
+    assert stableServicesNode.config.sops.templates."jellarr.env".owner == "jellarr";
+    assert stableServicesNode.config.sops.templates."jellarr.env".group == "jellarr";
+    mkEvalCheck "sops-jellyfin" stableServicesNode;
   sops-kanidm =
     assert assertSecret grafanaSopsNode "kanidm/idm-admin-password" ./tests/sops/kanidm.json
       "idm_admin_password";

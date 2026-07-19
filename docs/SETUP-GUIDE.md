@@ -288,6 +288,7 @@ decrypts into a protected temporary file, then writes the encrypted file again.
 | `grafana.json` | `password`, `grafana_secret` | Generated automatically |
 | `grafana.json` | `oidc_client_secret` | Generated when Grafana is active |
 | `gitea.json` | `oidc_client_secret` | Generated when Gitea and Kanidm are active |
+| `jellyfin.json` | `jellarr_api_key` | Generated when Jellyfin is active |
 | `kanidm.json` | `idm_admin_password` | Generated when an SSO client is active |
 | `docker-registry.json` | `accounts` | htpasswd contents to provide |
 | `rust-storage-streamer.json` | `webhooks` | One Discord `<id>:<token>` per line |

@@ -46,6 +46,37 @@ in
         openFirewall = false;
       };
 
+      sops.secrets."jellyfin/jellarr-api-key" = {
+        sopsFile = config.infra.sops.secretsDirectory + "/jellyfin.json";
+        key = "jellarr_api_key";
+        mode = "0400";
+      };
+
+      sops.templates."jellarr.env" = {
+        content = ''
+          JELLARR_API_KEY=${config.sops.placeholder."jellyfin/jellarr-api-key"}
+        '';
+        owner = config.services.jellarr.user;
+        group = config.services.jellarr.group;
+        mode = "0400";
+      };
+
+      services.jellarr = {
+        enable = true;
+        environmentFile = config.sops.templates."jellarr.env".path;
+        bootstrap = {
+          enable = true;
+          apiKeyFile = config.sops.secrets."jellyfin/jellarr-api-key".path;
+        };
+        config = {
+          version = 1;
+          base_url = "http://127.0.0.1:${toString port}";
+          system.enableMetrics = true;
+        };
+      };
+
+      systemd.services.jellarr.wantedBy = [ "multi-user.target" ];
+
       systemd.services.jellyfin-daily-restart = {
         description = "Restart Jellyfin to limit memory growth";
         serviceConfig = {
@@ -64,16 +95,29 @@ in
       infra.security.acls = [
         {
           port = port;
-          allowedTags = [ "web-server" ];
+          allowedTags = [
+            "web-server"
+            "prometheus"
+          ];
           description = "Jellyfin";
         }
       ];
     })
     # Fleet-wide contributions
+    {
+      infra.telemetry."jellyfin" = map (host: {
+        targets = [ "${host}:${toString port}" ];
+        labels = { inherit host; };
+      }) (services.getHostsByTag tag);
+    }
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
       infra.ingress."jellyfin" = {
         url = cfg.url;
         proxyTo = map (ip: "http://${ip}:${toString port}") (services.getVpnIpsByTag tag);
+        routes.metrics = {
+          path = "/metrics";
+          nginx.return = "403";
+        };
       };
     })
   ];

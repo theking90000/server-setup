@@ -97,6 +97,13 @@ if has_tag "applications/gitea" && has_tag "kanidm"; then
   encrypt_new "$TMP/gitea.json" secrets/gitea.json
 fi
 
+if has_tag "applications/jellyfin"; then
+  random_file "$TMP/jellyfin-jellarr-api-key"
+  jq -n --rawfile apiKey "$TMP/jellyfin-jellarr-api-key" \
+    '{jellarr_api_key: ($apiKey | rtrimstr("\n"))}' > "$TMP/jellyfin.json"
+  encrypt_new "$TMP/jellyfin.json" secrets/jellyfin.json
+fi
+
 if has_tag "applications/synapse"; then
   random_file "$TMP/synapse-registration"
   if has_tag "kanidm"; then

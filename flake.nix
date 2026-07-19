@@ -9,6 +9,10 @@
       url = "github:Mic92/sops-nix";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    jellarr = {
+      url = "github:venkyr77/jellarr";
+      flake = false;
+    };
     rust-storage-streamer = {
       url = "github:theking90000/rust-storage-streamer";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -22,6 +26,7 @@
       nixpkgs-darwin,
       colmena,
       sops-nix,
+      jellarr,
       rust-storage-streamer,
       ...
     }:
@@ -29,6 +34,7 @@
       nixosModules.default = {
         imports = [
           sops-nix.nixosModules.sops
+          (jellarr + "/nix/module")
           rust-storage-streamer.nixosModules.default
           ./nixos/modules
         ];
