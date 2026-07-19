@@ -213,7 +213,7 @@ original `system.stateVersion`.
 # version reference and lockfile, then evaluate all systems.
 nix run .#update-nixos-release
 
-# Review, commit and push the public change first. Then, in ovh-infra:
+# Review, commit and push the public change first. Then, in the private repository:
 just update-lib
 ```
 
