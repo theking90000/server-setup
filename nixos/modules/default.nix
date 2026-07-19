@@ -16,6 +16,7 @@
 # Bibliothèques :
 #   - lib/services  : helpers hasTag, getVpnIpsByTag, getHostsByTag
 #   - lib/ops       : mkSecretKeys (déploiement de secrets via Colmena)
+#   - lib/acme      : résolution pure des claims ACME vers les émetteurs
 # -------------------------------------------------------------------------
 { lib, ... }:
 
@@ -23,6 +24,7 @@
   imports = [
     ../lib/services.nix
     ../lib/ops.nix
+    ../lib/acme.nix
     ./nodes.nix
     ./base.nix
 

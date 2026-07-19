@@ -406,6 +406,34 @@ let
     assert secret.key == key;
     true;
   templateParsed = import ./template/flake.nix;
+  acmeLib = (import ./nixos/lib/acme.nix { inherit lib; })._module.args.acme;
+  acmeTestIssuers = {
+    primary.match = {
+      suffixes = [ "app.example.com" ];
+      hosts = [ ];
+    };
+    secondary.match = {
+      suffixes = [ "other.example.net" ];
+      hosts = [ "special.app.example.com" ];
+    };
+    deep.match = {
+      suffixes = [ "s3.app.example.com" ];
+      hosts = [ ];
+    };
+  };
+  acmeClaim =
+    coverage: scope: names:
+    acmeLib.tryResolveClaim {
+      issuers = acmeTestIssuers;
+      claimName = "test";
+      claim = {
+        inherit names coverage;
+        consumer = {
+          kind = "service";
+          inherit scope;
+        };
+      };
+    };
 in
 {
   minimal-module =
@@ -424,6 +452,94 @@ in
     assert rcloneConfigService.serviceConfig.UMask == "0077";
     assert !builtins.hasAttr "rclone-token-test" fileSecretsNode.config.systemd.services;
     mkEvalCheck "file-secrets" fileSecretsNode;
+  acme-lib =
+    let
+      wildcardApex = acmeClaim "wildcard" "nginx" [ "app.example.com" ];
+      wildcardChild = acmeClaim "wildcard" "nginx" [ "git.app.example.com" ];
+      wildcardDeep = acmeClaim "wildcard" "nginx" [ "bucket.s3.app.example.com" ];
+      wildcardExplicit = acmeClaim "wildcard" "nginx" [ "*.s3.app.example.com" ];
+      exactAuth = acmeClaim "exact" "kanidm" [ "auth.app.example.com" ];
+      hostMatch = acmeClaim "exact" "svc" [ "special.app.example.com" ];
+      grouped = acmeClaim "wildcard" "nginx" [
+        "app.example.com"
+        "git.app.example.com"
+      ];
+      ambiguous = acmeLib.tryResolveClaim {
+        issuers = {
+          a.match = {
+            suffixes = [ "dup.example.com" ];
+            hosts = [ ];
+          };
+          b.match = {
+            suffixes = [ "dup.example.com" ];
+            hosts = [ ];
+          };
+        };
+        claimName = "test";
+        claim = {
+          names = [ "x.dup.example.com" ];
+          coverage = "exact";
+          consumer = {
+            kind = "service";
+            scope = "svc";
+          };
+        };
+      };
+    in
+    # suffixe : apex, enfant et descendant profond du même émetteur
+    assert acmeLib.resolveName acmeTestIssuers "app.example.com" == "primary";
+    assert acmeLib.resolveName acmeTestIssuers "git.app.example.com" == "primary";
+    # le suffixe correspondant le plus long est prioritaire
+    assert acmeLib.resolveName acmeTestIssuers "bucket.s3.app.example.com" == "deep";
+    # un hôte exact est prioritaire sur les suffixes
+    assert acmeLib.resolveName acmeTestIssuers "special.app.example.com" == "secondary";
+    # ambiguïté et absence de correspondance rejetées
+    assert !ambiguous.ok;
+    assert !(acmeClaim "exact" "svc" [ "nope.example.org" ]).ok;
+    # couverture wildcard : l'apex rejoint le wildcard de premier niveau
+    assert wildcardApex.ok;
+    assert wildcardApex.value.certName == "primary-nginx-wildcard-app-example-com";
+    assert
+      wildcardApex.value.identifiers == [
+        "app.example.com"
+        "*.app.example.com"
+      ];
+    # un enfant est promu vers le même groupe, sans le renommer
+    assert wildcardChild.value.certName == wildcardApex.value.certName;
+    assert wildcardChild.value.identifiers == [ "*.app.example.com" ];
+    # un niveau imbriqué crée son propre groupe chez l'émetteur le plus précis
+    assert wildcardDeep.value.certName == "deep-nginx-wildcard-s3-app-example-com";
+    assert wildcardDeep.value.identifiers == [ "*.s3.app.example.com" ];
+    assert wildcardExplicit.value.certName == wildcardDeep.value.certName;
+    # claim exact : nom stable, chemins et unités calculés
+    assert exactAuth.value.certName == "primary-kanidm-exact-auth-app-example-com";
+    assert exactAuth.value.directory == "/var/lib/acme/primary-kanidm-exact-auth-app-example-com";
+    assert exactAuth.value.unit == "acme-primary-kanidm-exact-auth-app-example-com.service";
+    assert
+      exactAuth.value.renewUnit == "acme-order-renew-primary-kanidm-exact-auth-app-example-com.service";
+    # un match hôte reste exact même en couverture wildcard
+    assert hostMatch.value.certName == "secondary-svc-exact-special-app-example-com";
+    # apex + enfant dans un même claim : un seul groupe, identifiants fusionnés
+    assert grouped.ok;
+    assert grouped.value.certName == wildcardApex.value.certName;
+    assert
+      grouped.value.identifiers == [
+        "app.example.com"
+        "*.app.example.com"
+      ];
+    # rejets : exact multi-noms, exact wildcard, claim multi-émetteurs
+    assert
+      !(acmeClaim "exact" "svc" [
+        "a.app.example.com"
+        "b.app.example.com"
+      ]).ok;
+    assert !(acmeClaim "exact" "svc" [ "*.app.example.com" ]).ok;
+    assert
+      !(acmeClaim "wildcard" "nginx" [
+        "app.example.com"
+        "x.other.example.net"
+      ]).ok;
+    checkPkgs.runCommand "acme-lib" { } ''touch "$out"'';
   grafana-sso =
     assert builtins.hasAttr "grafana" grafanaSsoNode.config.infra.sso;
     assert
