@@ -15,6 +15,7 @@
   config,
   services,
   lib,
+  pkgs,
   ...
 }:
 
@@ -24,6 +25,21 @@ let
   enabled = services.hasTag tag;
   port = 8096;
   dataDir = "/var/lib/jellyfin";
+  localUrl = "http://127.0.0.1:${toString port}";
+  jellarrWaitReady = pkgs.writeShellScript "jellarr-wait-ready" ''
+    for _ in $(${pkgs.coreutils}/bin/seq 1 120); do
+      if ${pkgs.curl}/bin/curl --fail --silent --output /dev/null \
+        --header "X-Emby-Token: $JELLARR_API_KEY" \
+        ${localUrl}/System/Configuration; then
+        exit 0
+      fi
+
+      ${pkgs.coreutils}/bin/sleep 1
+    done
+
+    echo "Jellyfin configuration API did not become ready at ${localUrl}" >&2
+    exit 1
+  '';
 in
 {
   # Public API
@@ -70,12 +86,15 @@ in
         };
         config = {
           version = 1;
-          base_url = "http://127.0.0.1:${toString port}";
+          base_url = localUrl;
           system.enableMetrics = true;
         };
       };
 
-      systemd.services.jellarr.wantedBy = [ "multi-user.target" ];
+      systemd.services.jellarr = {
+        wantedBy = [ "multi-user.target" ];
+        serviceConfig.ExecStartPre = lib.mkAfter [ jellarrWaitReady ];
+      };
 
       systemd.services.jellyfin-daily-restart = {
         description = "Restart Jellyfin to limit memory growth";

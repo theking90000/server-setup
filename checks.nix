@@ -657,6 +657,7 @@ in
       wildcardCert = c.security.acme.certs."primary-nginx-wildcard-example-test";
       grafanaDatasources = c.services.grafana.provision.datasources.settings.datasources;
       jellyfinAcl = lib.findFirst (acl: acl.description == "Jellyfin") null c.infra.security.acls;
+      jellarrExecStartPre = c.systemd.services.jellarr.serviceConfig.ExecStartPre;
       jellyfinTelemetry = builtins.head c.infra.telemetry.jellyfin;
       jellyfinVhost = c.services.nginx.virtualHosts."jellyfin.example.test";
     in
@@ -681,6 +682,8 @@ in
     assert builtins.elem "multi-user.target" c.systemd.services.jellarr.wantedBy;
     assert builtins.elem "jellarr-api-key-bootstrap.service" c.systemd.services.jellarr.after;
     assert builtins.elem "jellyfin.service" c.systemd.services.jellarr-api-key-bootstrap.after;
+    assert builtins.length jellarrExecStartPre == 2;
+    assert lib.hasInfix "jellarr-wait-ready" (toString (lib.last jellarrExecStartPre));
     assert jellyfinAcl != null;
     assert builtins.elem "prometheus" jellyfinAcl.allowedTags;
     assert jellyfinTelemetry.targets == [ "test:8096" ];
