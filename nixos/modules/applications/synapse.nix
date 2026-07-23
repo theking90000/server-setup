@@ -381,5 +381,8 @@ in
         };
       };
     })
+    (lib.mkIf (services.getHostsByTag tag != [ ]) {
+      infra.grafana.dashboards = [ ./dashboards/synapse.json ];
+    })
   ];
 }
