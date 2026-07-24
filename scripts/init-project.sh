@@ -138,6 +138,20 @@ if has_tag "applications/qbittorrent"; then
   encrypt_new "$TMP/qbittorrent.json" secrets/qbittorrent.json
 fi
 
+if has_tag "applications/joal"; then
+  random_file "$TMP/joal-ui-path"
+  random_file "$TMP/joal-ui-secret"
+  jq -n \
+    --rawfile path "$TMP/joal-ui-path" \
+    --rawfile secret "$TMP/joal-ui-secret" \
+    '{
+      ui_path: ($path | rtrimstr("\n")),
+      ui_secret: ($secret | rtrimstr("\n"))
+    }' \
+    > "$TMP/joal.json"
+  encrypt_new "$TMP/joal.json" secrets/joal.json
+fi
+
 if has_tag "kanidm" && has_tag "web-server"; then
   random_file "$TMP/oauth2-proxy-client"
   jq -n --rawfile clientSecret "$TMP/oauth2-proxy-client" \

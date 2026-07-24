@@ -61,12 +61,13 @@ let
   # SSO et exporteur passent tous par 10.200.0.1)
   ssoEnabled = services.getHostsByTag "kanidm" != [ ] && cfg.url != null;
 
-  netns = "qbittorrent";
+  netnsCfg = cfg.networkNamespace;
+  netns = netnsCfg.name;
   wgIf = "wg-qbt";
   # ponytail: /30 fixe, à rendre configurable seulement si un déploiement
   # utilise déjà 10.200.0.0/30
-  hostVethIp = "10.200.0.1";
-  nsVethIp = "10.200.0.2";
+  hostVethIp = netnsCfg.hostAddress;
+  nsVethIp = netnsCfg.namespaceAddress;
   wgConfPath = "/run/secrets/qbittorrent/wg.conf";
   profileDir = "/var/lib/qBittorrent";
   metricsPort = 8090;
@@ -98,6 +99,48 @@ in
       type = lib.types.nullOr lib.types.port;
       default = null;
       description = "Port d'écoute BitTorrent (port forwardé par le provider VPN).";
+    };
+
+    # Contrat interne consommé par les services qui doivent partager le
+    # kill switch qBittorrent. Ces valeurs ne sont pas configurables depuis
+    # le dépôt privé.
+    networkNamespace = {
+      name = lib.mkOption {
+        type = lib.types.str;
+        default = "qbittorrent";
+        readOnly = true;
+        internal = true;
+      };
+      path = lib.mkOption {
+        type = lib.types.str;
+        default = "/run/netns/qbittorrent";
+        readOnly = true;
+        internal = true;
+      };
+      unit = lib.mkOption {
+        type = lib.types.str;
+        default = "qbittorrent-netns.service";
+        readOnly = true;
+        internal = true;
+      };
+      resolvConf = lib.mkOption {
+        type = lib.types.str;
+        default = "/etc/netns/qbittorrent/resolv.conf";
+        readOnly = true;
+        internal = true;
+      };
+      hostAddress = lib.mkOption {
+        type = lib.types.str;
+        default = "10.200.0.1";
+        readOnly = true;
+        internal = true;
+      };
+      namespaceAddress = lib.mkOption {
+        type = lib.types.str;
+        default = "10.200.0.2";
+        readOnly = true;
+        internal = true;
+      };
     };
   };
 
@@ -211,16 +254,16 @@ in
       };
 
       systemd.services.qbittorrent = {
-        bindsTo = [ "qbittorrent-netns.service" ];
-        after = [ "qbittorrent-netns.service" ];
+        bindsTo = [ netnsCfg.unit ];
+        after = [ netnsCfg.unit ];
         path = [
           pkgs.openssl
           pkgs.coreutils
           pkgs.gawk
         ];
         serviceConfig = {
-          NetworkNamespacePath = "/run/netns/${netns}";
-          BindReadOnlyPaths = [ "/etc/netns/${netns}/resolv.conf:/etc/resolv.conf" ];
+          NetworkNamespacePath = netnsCfg.path;
+          BindReadOnlyPaths = [ "${netnsCfg.resolvConf}:/etc/resolv.conf" ];
           # incompatible avec l'entrée dans un netns possédé par le user ns initial
           PrivateUsers = lib.mkForce false;
           LoadCredential = [ "webui-password:/run/secrets/qbittorrent/webui-password" ];
@@ -276,8 +319,8 @@ in
 
       systemd.services.qbittorrent-webui = {
         description = "Proxy WebUI qBittorrent (wg0 -> netns)";
-        requires = [ "qbittorrent-netns.service" ];
-        after = [ "qbittorrent-netns.service" ];
+        requires = [ netnsCfg.unit ];
+        after = [ netnsCfg.unit ];
         serviceConfig.ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd ${nsVethIp}:${toString cfg.webuiPort}";
       };
 

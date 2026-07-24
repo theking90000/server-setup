@@ -6,6 +6,7 @@
     ./gitea/gitea.nix
     ./grafana/grafana.nix
     ./jellyfin/jellyfin.nix
+    ./joal/joal.nix
     ./kanidm/kanidm.nix
     ./ntfy/ntfy.nix
     ./qbittorrent/qbittorrent.nix

@@ -81,6 +81,7 @@ let
             user = inactiveServiceValue;
           };
           infra.jellyfin.url = inactiveServiceValue;
+          infra.joal.url = inactiveServiceValue;
           infra.kanidm.url = inactiveServiceValue;
           infra.ntfy = {
             url = inactiveServiceValue;
@@ -310,6 +311,40 @@ let
           };
         }
       ];
+  joalNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [
+            "applications/joal"
+            "applications/qbittorrent"
+            "backup"
+            "web-server"
+          ];
+        };
+      }
+      [
+        {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
+          infra.restic = {
+            repository = "local:/tmp/backup";
+            password = "test";
+          };
+          infra.joal.url = "https://joal.example.test";
+        }
+      ];
+  joalWithoutQbittorrentNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [ "applications/joal" ];
+        };
+      }
+      [ ];
   qbittorrentSsoNode =
     mkNode
       {
@@ -992,11 +1027,61 @@ in
       qbittorrentNode.config.infra.grafana.dashboards;
     assert qbittorrentNode.config.infra.ingress.qbittorrent.proxyTo == [ "http://10.100.0.1:8080" ];
     assert builtins.elem "/var/lib/qBittorrent" qbittorrentNode.config.infra.backup.paths;
+    assert qbittorrentNode.config.infra.qbittorrent.networkNamespace == {
+      hostAddress = "10.200.0.1";
+      name = "qbittorrent";
+      namespaceAddress = "10.200.0.2";
+      path = "/run/netns/qbittorrent";
+      resolvConf = "/etc/netns/qbittorrent/resolv.conf";
+      unit = "qbittorrent-netns.service";
+    };
     # sans kanidm : pas de bypass d'auth, le mot de passe reste exigé
     assert !lib.hasInfix "AuthSubnetWhitelist=10.200.0.0/30"
       qbittorrentNode.config.systemd.services.qbittorrent.preStart;
     assert qbittorrentNode.config.infra.oauth2Proxy.apps == { };
     mkEvalCheck "qbittorrent" qbittorrentNode;
+  joal =
+    let
+      c = joalNode.config;
+      joalUnit = c.systemd.services.joal;
+    in
+    assert assertSecret joalNode "joal/ui-path" ./tests/sops/joal.json "ui_path";
+    assert assertSecret joalNode "joal/ui-secret" ./tests/sops/joal.json "ui_secret";
+    assert builtins.elem "ui-path:/run/secrets/joal/ui-path" (
+      lib.toList joalUnit.serviceConfig.LoadCredential
+    );
+    assert builtins.elem "ui-secret:/run/secrets/joal/ui-secret" (
+      lib.toList joalUnit.serviceConfig.LoadCredential
+    );
+    # JOAL doit toujours rejoindre le netns VPN qBittorrent : aucun mode
+    # réseau hôte/public ne doit être représentable par les options.
+    assert joalUnit.serviceConfig.NetworkNamespacePath == "/run/netns/qbittorrent";
+    assert builtins.elem "qbittorrent-netns.service" joalUnit.bindsTo;
+    assert builtins.elem "/etc/netns/qbittorrent/resolv.conf:/etc/resolv.conf" (
+      lib.toList joalUnit.serviceConfig.BindReadOnlyPaths
+    );
+    assert builtins.attrNames c.infra.joal == [
+      "settings"
+      "url"
+      "webuiPort"
+    ];
+    assert c.infra.joal.settings.client == "qbittorrent-5.2.2.client";
+    assert c.systemd.sockets.joal-webui.listenStreams == [ "10.100.0.1:8091" ];
+    assert lib.any (
+      rule: rule.port == 8091 && rule.allowedTags == [ "web-server" ]
+    ) c.infra.security.acls;
+    assert c.infra.ingress.joal.proxyTo == [ "http://10.100.0.1:8091" ];
+    assert builtins.elem "/var/lib/joal" c.infra.backup.paths;
+    mkEvalCheck "joal" joalNode;
+  joal-requires-qbittorrent =
+    assert lib.any (
+      assertion:
+      !assertion.assertion
+      && lib.hasInfix "applications/joal exige applications/qbittorrent" assertion.message
+    ) joalWithoutQbittorrentNode.config.assertions;
+    checkPkgs.runCommand "joal-requires-qbittorrent" { } ''
+      touch "$out"
+    '';
   qbittorrent-sso =
     let
       c = qbittorrentSsoNode.config;

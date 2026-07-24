@@ -9,6 +9,7 @@
 #   - filesave           : serveur de partage de fichiers (tag: applications/filesave-server)
 #   - gitea              : serveur Git auto-hébergé (tag: applications/gitea)
 #   - jellyfin             : serveur multimédia (tag: applications/jellyfin)
+#   - joal               : client d'annonce dans le netns qBittorrent (tag: applications/joal)
 #   - ntfy               : serveur de notifications push (tag: applications/ntfy)
 #   - qbittorrent        : client BitTorrent isolé derrière un VPN tiers (tag: applications/qbittorrent)
 #   - reposilite         : gestionnaire de dépôts Maven (tag: applications/reposilite)
@@ -23,6 +24,7 @@
     ./filesave.nix
     ./gitea.nix
     ./jellyfin.nix
+    ./joal.nix
     ./ntfy.nix
     ./qbittorrent.nix
     ./reposilite.nix

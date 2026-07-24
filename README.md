@@ -193,6 +193,7 @@ tests. New deployments use SOPS by default.
 | `applications/filesave-server` | File sharing                                   |
 | `applications/gitea`           | Git forge                                      |
 | `applications/jellyfin`        | Media server                                   |
+| `applications/joal`            | Tracker test client, always inside the qBittorrent VPN netns |
 | `applications/ntfy`            | Push notifications                             |
 | `applications/qbittorrent`     | BitTorrent client in a VPN-only netns (kill switch) |
 | `applications/reposilite`      | Maven repository                               |
