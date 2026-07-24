@@ -32,6 +32,18 @@ let
   stateDir = "/var/lib/joal";
   package = pkgs.callPackage ../../pkgs/joal { };
   initialConfig = pkgs.writeText "joal-config.json" (builtins.toJSON cfg.settings);
+  parsedUrl =
+    if cfg.url == null then
+      null
+    else
+      builtins.match "https?://[^/?#]+(/[^?#]*)?" cfg.url;
+  urlPath =
+    if parsedUrl == null || builtins.elemAt parsedUrl 0 == null then
+      null
+    else
+      lib.removeSuffix "/" (builtins.elemAt parsedUrl 0);
+  webuiBackends =
+    map (ip: "http://${ip}:${toString cfg.webuiPort}") (services.getVpnIpsByTag tag);
   runner = pkgs.writeShellScript "joal-run" ''
     exec ${lib.getExe package} \
       --joal-conf=${stateDir} \
@@ -46,7 +58,12 @@ in
     url = lib.mkOption {
       type = lib.types.nullOr lib.types.str;
       default = null;
-      description = "URL publique optionnelle de la WebUI JOAL (ex: https://joal.example.com).";
+      description = ''
+        URL publique optionnelle de JOAL (ex: https://joal.example.com ou
+        https://qbt.example.com/joal). Pour un sous-chemin, sa dernière
+        composante doit correspondre au secret ui_path ; l'UI est alors sous
+        /<ui_path>/ui/ et le WebSocket sous /<ui_path>.
+      '';
     };
 
     webuiPort = lib.mkOption {
@@ -232,10 +249,34 @@ in
     })
 
     (lib.mkIf (services.getVpnIpsByTag tag != [ ] && cfg.url != null) {
-      infra.ingress.joal = {
-        url = cfg.url;
-        proxyTo = map (ip: "http://${ip}:${toString cfg.webuiPort}") (services.getVpnIpsByTag tag);
-      };
+      # Quand cette URL partage le domaine qBittorrent, le auth_request SSO
+      # déjà posé au niveau du vhost protège également cette location et son
+      # WebSocket. Enregistrer une seconde app oauth2-proxy sur le même
+      # domaine créerait deux handlers /_ssoproxy/auth concurrents.
+      infra.ingress.joal =
+        if urlPath == null || urlPath == "" then
+          {
+            url = cfg.url;
+            proxyTo = webuiBackends;
+          }
+        else
+          {
+            url = cfg.url;
+            # JOAL sert l'UI sous /<ui_path>/ui/, mais son handshake
+            # WebSocket vise exactement /<ui_path> sans slash final.
+            # Les deux routes doivent donc précéder le catch-all "/" de
+            # qBittorrent lorsque les applications partagent un domaine.
+            endpoint.basePath = "/";
+            routes.websocket = {
+              path = urlPath;
+              match = "exact";
+              proxyTo = webuiBackends;
+            };
+            routes.webui = {
+              path = "${urlPath}/";
+              proxyTo = webuiBackends;
+            };
+          };
     })
   ];
 }

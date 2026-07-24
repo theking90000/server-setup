@@ -350,6 +350,7 @@ let
       {
         test = baseNode // {
           tags = [
+            "applications/joal"
             "applications/qbittorrent"
             "kanidm"
             "web-server"
@@ -365,6 +366,9 @@ let
           };
           infra.kanidm.url = "https://auth.example.test";
           infra.qbittorrent.url = "https://qbt.example.test";
+          # JOAL partage le vhost qBittorrent : le auth_request posé au
+          # niveau server protège aussi l'UI et le WebSocket sous /joal.
+          infra.joal.url = "https://qbt.example.test/joal";
         }
       ];
   rcloneMount = lib.findFirst (
@@ -1087,7 +1091,12 @@ in
       c = qbittorrentSsoNode.config;
       oauth2 = c.services.kanidm.provision.systems.oauth2.oauth2-proxy;
       qbtVhost = c.services.nginx.virtualHosts."qbt.example.test";
+      joalWebsocket = qbtVhost.locations."= /joal";
+      joalWebui = qbtVhost.locations."/joal/";
     in
+    # Un seul garde SSO par vhost : JOAL sous /joal hérite du groupe
+    # qbittorrent_users au lieu de créer un auth handler concurrent.
+    assert builtins.attrNames c.infra.oauth2Proxy.apps == [ "qbittorrent" ];
     assert c.infra.oauth2Proxy.apps.qbittorrent.group == "qbittorrent_users";
     assert builtins.hasAttr "qbittorrent_users" c.services.kanidm.provision.groups;
     assert oauth2.scopeMaps.qbittorrent_users == [
@@ -1105,6 +1114,10 @@ in
     assert c.services.oauth2-proxy.extraConfig."proxy-prefix" == "/_ssoproxy";
     assert c.services.oauth2-proxy.extraConfig."oidc-groups-claim" == "sso_groups";
     assert lib.hasInfix "auth_request /_ssoproxy/auth" qbtVhost.extraConfig;
+    assert joalWebsocket.proxyPass == "http://ig-joal-websocket";
+    assert joalWebsocket.proxyWebsockets;
+    assert joalWebui.proxyPass == "http://ig-joal-webui";
+    assert joalWebui.proxyWebsockets;
     assert lib.hasInfix "allowed_groups=qbittorrent_users"
       qbtVhost.locations."= /_ssoproxy/auth".proxyPass;
     assert
