@@ -1118,6 +1118,7 @@ in
     assert joalWebsocket.proxyWebsockets;
     assert joalWebui.proxyPass == "http://ig-joal-webui";
     assert joalWebui.proxyWebsockets;
+    assert lib.hasInfix "crossorigin=\"use-credentials\"" joalWebui.extraConfig;
     assert lib.hasInfix "allowed_groups=qbittorrent_users"
       qbtVhost.locations."= /_ssoproxy/auth".proxyPass;
     assert

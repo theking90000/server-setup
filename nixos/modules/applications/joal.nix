@@ -275,6 +275,14 @@ in
             routes.webui = {
               path = "${urlPath}/";
               proxyTo = webuiBackends;
+              nginx.extraConfig = ''
+                # Un Web App Manifest est chargé sans cookies par défaut.
+                # Sans cet attribut, oauth2-proxy le redirige vers le login
+                # cross-origin et le navigateur bloque la réponse par CORS.
+                proxy_set_header Accept-Encoding "";
+                sub_filter_once on;
+                sub_filter '<link rel="manifest" href="./manifest.json"/>' '<link rel="manifest" crossorigin="use-credentials" href="./manifest.json"/>';
+              '';
             };
           };
     })
