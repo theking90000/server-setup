@@ -32,6 +32,7 @@ let
   stateDir = "/var/lib/joal";
   package = pkgs.callPackage ../../pkgs/joal { };
   initialConfig = pkgs.writeText "joal-config.json" (builtins.toJSON cfg.settings);
+  bootstrapPort = cfg.webuiPort + 1;
   parsedUrl =
     if cfg.url == null then
       null
@@ -44,6 +45,28 @@ let
       lib.removeSuffix "/" (builtins.elemAt parsedUrl 0);
   webuiBackends =
     map (ip: "http://${ip}:${toString cfg.webuiPort}") (services.getVpnIpsByTag tag);
+  bootstrapBackends =
+    map (ip: "http://${ip}:${toString bootstrapPort}") (services.getVpnIpsByTag tag);
+  uiBootstrap = pkgs.writeShellScript "joal-ui-bootstrap" ''
+    IFS= read -r _request_line || exit 0
+    while IFS= read -r header; do
+      [ "$header" = $'\r' ] && break
+    done
+
+    ui_path=$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$CREDENTIALS_DIRECTORY/ui-path")
+    ui_secret=$(${pkgs.coreutils}/bin/tr -d '\r\n' < "$CREDENTIALS_DIRECTORY/ui-secret")
+    printf -v body \
+      'localStorage.setItem("guiConfig",JSON.stringify({host:window.location.hostname,port:window.location.port||("https:"===window.location.protocol?"443":"80"),pathPrefix:"%s",secretToken:"%s"}));' \
+      "$ui_path" "$ui_secret"
+
+    printf 'HTTP/1.1 200 OK\r\n'
+    printf 'Content-Type: application/javascript; charset=utf-8\r\n'
+    printf 'Cache-Control: no-store\r\n'
+    printf 'X-Content-Type-Options: nosniff\r\n'
+    printf 'Content-Length: %s\r\n' "''${#body}"
+    printf 'Connection: close\r\n\r\n'
+    printf '%s' "$body"
+  '';
   runner = pkgs.writeShellScript "joal-run" ''
     exec ${lib.getExe package} \
       --joal-conf=${stateDir} \
@@ -124,6 +147,10 @@ in
         {
           assertion = cfg.settings.minUploadRate <= cfg.settings.maxUploadRate;
           message = "infra.joal.settings.minUploadRate doit être inférieur ou égal à maxUploadRate.";
+        }
+        {
+          assertion = cfg.webuiPort < 65535;
+          message = "infra.joal.webuiPort doit laisser le port suivant libre pour le bootstrap runtime de la WebUI.";
         }
       ];
 
@@ -237,11 +264,57 @@ in
         serviceConfig.ExecStart = "${pkgs.systemd}/lib/systemd/systemd-socket-proxyd ${netns.namespaceAddress}:${toString cfg.webuiPort}";
       };
 
+      # Le WebUI upstream mémorise sa connexion dans localStorage et prend
+      # encore le port 80 par défaut derrière un reverse proxy HTTPS. Ce petit
+      # endpoint, servi uniquement sur le mesh et protégé par le SSO public,
+      # injecte la configuration correcte avant le bundle JOAL. Le token est
+      # lu à l'exécution : il ne rejoint ni le Nix store, ni une URL.
+      systemd.sockets.joal-ui-bootstrap = {
+        description = "Socket du bootstrap runtime de la WebUI JOAL";
+        wantedBy = [ "sockets.target" ];
+        listenStreams = [ "${services.getVpnIp}:${toString bootstrapPort}" ];
+        socketConfig = {
+          Accept = true;
+          FreeBind = true;
+        };
+      };
+
+      systemd.services."joal-ui-bootstrap@" = {
+        description = "Bootstrap runtime de la WebUI JOAL";
+        requires = [ "joal.service" ];
+        after = [ "joal.service" ];
+        serviceConfig = {
+          User = "joal";
+          Group = "joal";
+          ExecStart = uiBootstrap;
+          StandardInput = "socket";
+          StandardOutput = "socket";
+          StandardError = "journal";
+          LoadCredential = [
+            "ui-path:/run/secrets/joal/ui-path"
+            "ui-secret:/run/secrets/joal/ui-secret"
+          ];
+          NoNewPrivileges = true;
+          PrivateTmp = true;
+          ProtectSystem = "strict";
+          ProtectHome = true;
+          PrivateDevices = true;
+          RestrictSUIDSGID = true;
+          LockPersonality = true;
+          CapabilityBoundingSet = "";
+        };
+      };
+
       infra.security.acls = [
         {
           port = cfg.webuiPort;
           allowedTags = [ "web-server" ];
           description = "JOAL WebUI";
+        }
+        {
+          port = bootstrapPort;
+          allowedTags = [ "web-server" ];
+          description = "Bootstrap runtime de la WebUI JOAL";
         }
       ];
 
@@ -272,6 +345,15 @@ in
               match = "exact";
               proxyTo = webuiBackends;
             };
+            routes.bootstrap = {
+              path = "${urlPath}/ui/bootstrap.js";
+              match = "exact";
+              proxyTo = bootstrapBackends;
+              nginx.extraConfig = ''
+                proxy_no_cache 1;
+                proxy_cache_bypass 1;
+              '';
+            };
             routes.webui = {
               path = "${urlPath}/";
               proxyTo = webuiBackends;
@@ -282,6 +364,7 @@ in
                 proxy_set_header Accept-Encoding "";
                 sub_filter_once on;
                 sub_filter '<link rel="manifest" href="./manifest.json"/>' '<link rel="manifest" crossorigin="use-credentials" href="./manifest.json"/>';
+                sub_filter '<script>!function(l)' '<script src="./bootstrap.js"></script><script>!function(l)';
               '';
             };
           };

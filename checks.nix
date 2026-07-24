@@ -1071,8 +1071,16 @@ in
     ];
     assert c.infra.joal.settings.client == "qbittorrent-5.2.2.client";
     assert c.systemd.sockets.joal-webui.listenStreams == [ "10.100.0.1:8091" ];
+    assert c.systemd.sockets.joal-ui-bootstrap.listenStreams == [ "10.100.0.1:8092" ];
+    assert c.systemd.sockets.joal-ui-bootstrap.socketConfig.Accept;
+    assert builtins.elem "ui-secret:/run/secrets/joal/ui-secret" (
+      lib.toList c.systemd.services."joal-ui-bootstrap@".serviceConfig.LoadCredential
+    );
     assert lib.any (
       rule: rule.port == 8091 && rule.allowedTags == [ "web-server" ]
+    ) c.infra.security.acls;
+    assert lib.any (
+      rule: rule.port == 8092 && rule.allowedTags == [ "web-server" ]
     ) c.infra.security.acls;
     assert c.infra.ingress.joal.proxyTo == [ "http://10.100.0.1:8091" ];
     assert builtins.elem "/var/lib/joal" c.infra.backup.paths;
@@ -1092,6 +1100,7 @@ in
       oauth2 = c.services.kanidm.provision.systems.oauth2.oauth2-proxy;
       qbtVhost = c.services.nginx.virtualHosts."qbt.example.test";
       joalWebsocket = qbtVhost.locations."= /joal";
+      joalBootstrap = qbtVhost.locations."= /joal/ui/bootstrap.js";
       joalWebui = qbtVhost.locations."/joal/";
     in
     # Un seul garde SSO par vhost : JOAL sous /joal hérite du groupe
@@ -1116,9 +1125,11 @@ in
     assert lib.hasInfix "auth_request /_ssoproxy/auth" qbtVhost.extraConfig;
     assert joalWebsocket.proxyPass == "http://ig-joal-websocket";
     assert joalWebsocket.proxyWebsockets;
+    assert joalBootstrap.proxyPass == "http://ig-joal-bootstrap";
     assert joalWebui.proxyPass == "http://ig-joal-webui";
     assert joalWebui.proxyWebsockets;
     assert lib.hasInfix "crossorigin=\"use-credentials\"" joalWebui.extraConfig;
+    assert lib.hasInfix "bootstrap.js" joalWebui.extraConfig;
     assert lib.hasInfix "allowed_groups=qbittorrent_users"
       qbtVhost.locations."= /_ssoproxy/auth".proxyPass;
     assert
