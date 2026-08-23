@@ -10,9 +10,11 @@
     ./kanidm/kanidm.nix
     ./ntfy/ntfy.nix
     ./qbittorrent/qbittorrent.nix
+    ./radarr/radarr.nix
     ./rclone-sync/rclone-sync.nix
     ./reposilite/reposilite.nix
     ./rust-storage-streamer/rust-storage-streamer.nix
+    ./sonarr/sonarr.nix
     ./synapse/synapse.nix
     ./www/www.nix
   ];

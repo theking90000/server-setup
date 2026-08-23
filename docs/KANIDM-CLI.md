@@ -234,6 +234,33 @@ Revocation follows the same procedure:
 kanidm group remove-members grafana_editors alice -D idm_admin
 ```
 
+### Applications behind oauth2-proxy
+
+qBittorrent, Radarr and Sonarr have no usable OIDC support, so they sit
+behind the shared oauth2-proxy client. Each application still gets its own
+access group, checked per request by Nginx:
+
+| Group | Application |
+|---|---|
+| `qbittorrent_users` | qBittorrent WebUI |
+| `radarr_users` | Radarr |
+| `sonarr_users` | Sonarr |
+
+```sh
+kanidm group add-members radarr_users alice -D idm_admin
+kanidm group add-members sonarr_users alice -D idm_admin
+kanidm group list-members radarr_users -D idm_admin
+```
+
+A person outside the group authenticates successfully and then receives a
+403: the group is enforced by the proxy, not by the application. Revoking
+access is immediate for new requests, but an already issued session cookie
+stays valid until it expires.
+
+```sh
+kanidm group remove-members radarr_users alice -D idm_admin
+```
+
 Future applications will follow the `<client>_<role>` convention. Use
 `kanidm group search <client>` to discover the roles that are actually
 available.

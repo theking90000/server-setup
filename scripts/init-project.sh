@@ -138,6 +138,17 @@ if has_tag "applications/qbittorrent"; then
   encrypt_new "$TMP/qbittorrent.json" secrets/qbittorrent.json
 fi
 
+# Radarr et Sonarr : la clé d'API est imposée au service par variable
+# d'environnement. 32 caractères hexadécimaux, le format que les
+# applications *arr génèrent elles-mêmes.
+for ARR in radarr sonarr; do
+  if has_tag "applications/$ARR"; then
+    jq -n --arg apiKey "$(openssl rand -hex 16)" '{api_key: $apiKey}' \
+      > "$TMP/$ARR.json"
+    encrypt_new "$TMP/$ARR.json" "secrets/$ARR.json"
+  fi
+done
+
 if has_tag "applications/joal"; then
   random_file "$TMP/joal-ui-path"
   random_file "$TMP/joal-ui-secret"

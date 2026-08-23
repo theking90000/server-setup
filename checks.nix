@@ -91,7 +91,9 @@ let
             url = inactiveServiceValue;
             torrentingPort = inactiveServiceValue;
           };
+          infra.radarr.url = inactiveServiceValue;
           infra.reposilite.url = inactiveServiceValue;
+          infra.sonarr.url = inactiveServiceValue;
           infra.rust-storage-streamer.s3Url = inactiveServiceValue;
           infra.synapse = {
             url = inactiveServiceValue;
@@ -376,6 +378,63 @@ let
           # JOAL partage le vhost qBittorrent : le auth_request posé au
           # niveau server protège aussi l'UI et le WebSocket sous /joal.
           infra.joal.url = "https://qbt.example.test/joal";
+        }
+      ];
+  servarrNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [
+            "applications/qbittorrent"
+            "applications/radarr"
+            "applications/sonarr"
+            "backup"
+            "kanidm"
+            "prometheus"
+            "web-server"
+          ];
+        };
+        metrics = baseNode // {
+          publicIp = "192.0.2.2";
+          vpnIp = "10.100.0.2";
+          wireguardPublicKey = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+          tags = [ "prometheus" ];
+        };
+      }
+      [
+        {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
+          infra.kanidm.url = "https://auth.example.test";
+          infra.restic = {
+            repository = "local:/tmp/backup";
+            password = "test";
+          };
+          infra.radarr.url = "https://radarr.example.test";
+          infra.sonarr.url = "https://sonarr.example.test";
+        }
+      ];
+  servarrWithoutSsoNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [
+            "applications/radarr"
+            "web-server"
+          ];
+        };
+      }
+      [
+        {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
+          infra.radarr.url = "https://radarr.example.test";
         }
       ];
   rcloneMount = lib.findFirst (
@@ -1179,6 +1238,82 @@ in
     # SSO actif : bypass d'auth qBittorrent pour le subnet veth
     assert lib.hasInfix "AuthSubnetWhitelist=10.200.0.0/30" c.systemd.services.qbittorrent.preStart;
     mkEvalCheck "qbittorrent-sso" qbittorrentSsoNode;
+  servarr =
+    let
+      c = servarrNode.config;
+      radarrUnit = c.systemd.services.radarr;
+      exporter = c.services.prometheus.exporters.exportarr-radarr;
+      media = c.infra.servarr.mediaGroup;
+      downloads = "/var/lib/qBittorrent/qBittorrent/downloads";
+    in
+    # Configuration imposée par variables d'environnement : c'est le seul
+    # canal qui gagne sur le config.xml réécrit par l'application.
+    assert radarrUnit.environment.RADARR__SERVER__BINDADDRESS == "10.100.0.1";
+    assert radarrUnit.environment.RADARR__SERVER__PORT == "7878";
+    assert radarrUnit.environment.RADARR__AUTH__METHOD == "External";
+    assert c.systemd.services.sonarr.environment.SONARR__SERVER__PORT == "8989";
+    assert c.systemd.services.sonarr.environment.SONARR__AUTH__METHOD == "External";
+    assert assertSecret servarrNode "radarr/api-key" ./tests/sops/radarr.json "api_key";
+    assert assertSecret servarrNode "sonarr/api-key" ./tests/sops/sonarr.json "api_key";
+    assert lib.hasInfix "RADARR__AUTH__APIKEY" c.sops.templates."radarr.env".content;
+    assert c.services.radarr.environmentFiles == [ c.sops.templates."radarr.env".path ];
+    # Partage médiathèque et téléchargements
+    assert media.enable;
+    assert c.users.groups.media.gid == media.gid;
+    assert builtins.elem "media" (lib.toList radarrUnit.serviceConfig.SupplementaryGroups);
+    assert radarrUnit.serviceConfig.UMask == "0002";
+    assert c.systemd.services.qbittorrent.serviceConfig.UMask == "0002";
+    assert c.systemd.tmpfiles.settings.servarr.${downloads}.d.mode == "2775";
+    assert c.systemd.tmpfiles.settings.servarr.${downloads}.d.group == "media";
+    # L'exporteur local interroge l'application par la clé d'API, pas le SSO
+    assert exporter.url == "http://10.100.0.1:7878";
+    assert exporter.apiKeyFile == "/run/secrets/radarr/api-key";
+    assert exporter.environment.INTERFACE == "10.100.0.1";
+    assert lib.any (
+      rule:
+      rule.port == 7878 && rule.allowedTags == [ "web-server" ] && rule.allowedIps == [ "10.100.0.1" ]
+    ) c.infra.security.acls;
+    assert lib.any (
+      rule: rule.port == 9709 && rule.allowedTags == [ "prometheus" ]
+    ) c.infra.security.acls;
+    assert (builtins.head c.infra.telemetry.radarr).targets == [ "test:9708" ];
+    assert lib.any (
+      job:
+      job.job_name == "radarr"
+      && job.static_configs == [
+        {
+          targets = [ "test:9708" ];
+          labels.host = "test";
+        }
+      ]
+    ) c.services.prometheus.scrapeConfigs;
+    assert (builtins.head c.infra.telemetry.sonarr).targets == [ "test:9709" ];
+    assert c.infra.ingress.radarr.proxyTo == [ "http://10.100.0.1:7878" ];
+    assert builtins.elem ./nixos/modules/applications/dashboards/sonarr.json
+      c.infra.grafana.dashboards;
+    # SSO : un garde par application, donc un groupe Kanidm par application
+    assert c.infra.oauth2Proxy.apps.radarr.group == "radarr_users";
+    assert builtins.hasAttr "sonarr_users" c.services.kanidm.provision.groups;
+    assert lib.hasInfix "allowed_groups=radarr_users"
+      c.services.nginx.virtualHosts."radarr.example.test".locations."= /_ssoproxy/auth".proxyPass;
+    # Sauvegarde : instantané SQLite cohérent dans le chemin sauvegardé
+    assert builtins.elem "/var/lib/radarr" c.infra.backup.paths;
+    assert lib.any (
+      command:
+      lib.hasInfix ".backup '$tmp'" command && lib.hasInfix "/var/lib/radarr/db-backup" command
+    ) c.infra.backup.prepareCommands;
+    mkEvalCheck "servarr" servarrNode;
+  servarr-without-sso =
+    let
+      c = servarrWithoutSsoNode.config;
+    in
+    # Sans nœud kanidm, déléguer l'authentification au proxy ouvrirait
+    # l'ingress : l'application garde son propre formulaire.
+    assert c.systemd.services.radarr.environment.RADARR__AUTH__METHOD == "Forms";
+    assert c.systemd.services.radarr.environment.RADARR__AUTH__REQUIRED == "Enabled";
+    assert c.infra.oauth2Proxy.apps == { };
+    assert lib.any (lib.hasInfix "aucun nœud kanidm") c.warnings;
+    mkEvalCheck "servarr-without-sso" servarrWithoutSsoNode;
   template =
     assert builtins.isAttrs templateParsed;
     assert builtins.pathExists ./template/inventory/hardware/vps1/hardware.nix;

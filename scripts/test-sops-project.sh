@@ -91,7 +91,7 @@ mkdir -p "$INIT_REPO/inventory/wireguard/vps1" "$INIT_REPO/config"
 touch "$INIT_REPO/inventory/nodes.nix" "$INIT_REPO/flake.nix"
 printf 'wireguard-private\n' > "$INIT_REPO/inventory/wireguard/vps1/private.key"
 
-BACKUP_NODE='{"nodes":{"vps1":{"publicIp":"192.0.2.1","sshKey":"/tmp/key","sshPort":22,"tags":["backup","applications/jellyfin","applications/rust-storage-streamer"]}}}'
+BACKUP_NODE='{"nodes":{"vps1":{"publicIp":"192.0.2.1","sshKey":"/tmp/key","sshPort":22,"tags":["backup","applications/jellyfin","applications/radarr","applications/rust-storage-streamer"]}}}'
 (
   cd "$INIT_REPO"
   NODES_JSON="$BACKUP_NODE" bash "$ROOT/scripts/init-project.sh"
@@ -100,15 +100,21 @@ BACKUP_NODE='{"nodes":{"vps1":{"publicIp":"192.0.2.1","sshKey":"/tmp/key","sshPo
   test -f secrets/jellyfin.json
   test -f secrets/rust-storage-streamer.json
   jq -e '.jellarr_api_key | length == 64' secrets/jellyfin.json > /dev/null
+  test -f secrets/radarr.json
+  jq -e '.api_key | length == 32' secrets/radarr.json > /dev/null
+  # sans le tag : pas de secret Sonarr
+  test ! -f secrets/sonarr.json
   # sans web-server ni kanidm : aucun secret ACME
   test ! -f secrets/acme.json
   cp secrets/restic.json "$TMP/restic-before.json"
   cp secrets/jellyfin.json "$TMP/jellyfin-before.json"
   cp secrets/rust-storage-streamer.json "$TMP/rust-storage-streamer-before.json"
+  cp secrets/radarr.json "$TMP/radarr-before.json"
   NODES_JSON="$BACKUP_NODE" bash "$ROOT/scripts/init-project.sh"
   cmp secrets/restic.json "$TMP/restic-before.json"
   cmp secrets/jellyfin.json "$TMP/jellyfin-before.json"
   cmp secrets/rust-storage-streamer.json "$TMP/rust-storage-streamer-before.json"
+  cmp secrets/radarr.json "$TMP/radarr-before.json"
 
   if bash "$ROOT/scripts/check-project.sh"; then
     echo "check-project should reject CHANGEME" >&2

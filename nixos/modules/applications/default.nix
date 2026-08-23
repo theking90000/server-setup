@@ -14,6 +14,7 @@
 #   - qbittorrent        : client BitTorrent isolé derrière un VPN tiers (tag: applications/qbittorrent)
 #   - reposilite         : gestionnaire de dépôts Maven (tag: applications/reposilite)
 #   - rust-storage-streamer : gateways Files et S3 sur Discord (tag: applications/rust-storage-streamer)
+#   - servarr            : Radarr et Sonarr (tags: applications/radarr, applications/sonarr)
 #   - sncb-insights      : scraping des données de la SNCB (tag: applications/sncb-insights)
 #   - synapse            : homeserver Matrix fédéré (tag: applications/synapse)
 #   - www                : serveur de fichiers statiques (tag: applications/www)
@@ -29,6 +30,7 @@
     ./qbittorrent.nix
     ./reposilite.nix
     ./rust-storage-streamer.nix
+    ./servarr.nix
     ./sncb-insights.nix
     ./synapse.nix
     ./www.nix
