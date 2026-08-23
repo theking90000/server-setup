@@ -265,8 +265,15 @@ let
           tags = [
             "applications/rust-storage-streamer"
             "backup"
+            "node-metrics"
             "web-server"
           ];
+        };
+        metrics = baseNode // {
+          publicIp = "192.0.2.2";
+          vpnIp = "10.100.0.2";
+          wireguardPublicKey = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=";
+          tags = [ "prometheus" ];
         };
       }
       [
@@ -957,6 +964,8 @@ in
       s3Service = rustStorageStreamerNode.config.services.rust-storage-streamer.s3;
       filesUnit = rustStorageStreamerNode.config.systemd.services.rust-storage-streamer-files;
       s3Unit = rustStorageStreamerNode.config.systemd.services.rust-storage-streamer-s3;
+      metricsUnit = rustStorageStreamerNode.config.systemd.services.rust-storage-streamer-catalog-metrics;
+      metricsTimer = rustStorageStreamerNode.config.systemd.timers.rust-storage-streamer-catalog-metrics;
       ingress = rustStorageStreamerNode.config.infra.ingress.rust-storage-streamer-s3;
       nginxLocation =
         rustStorageStreamerNode.config.services.nginx.virtualHosts."storage.example.test".locations."/";
@@ -968,10 +977,33 @@ in
     assert filesService.listenAddress == "127.0.0.1";
     assert s3Service.enable;
     assert s3Service.listenAddress == "10.100.0.1";
+    assert
+      filesService.extraArgs == [
+        "--frame-size"
+        "65536"
+      ];
+    assert
+      s3Service.extraArgs == [
+        "--frame-size"
+        "65536"
+      ];
     assert builtins.elem "webhooks:/run/secrets/rust-storage-streamer/webhooks"
       filesUnit.serviceConfig.LoadCredential;
     assert builtins.elem "webhooks:/run/secrets/rust-storage-streamer/webhooks"
       s3Unit.serviceConfig.LoadCredential;
+    assert metricsUnit.serviceConfig.Type == "oneshot";
+    assert builtins.elem "/var/lib/node_exporter/textfile_collector"
+      metricsUnit.serviceConfig.ReadWritePaths;
+    assert lib.hasInfix "/var/lib/rust-storage-streamer-files/catalog.db" metricsUnit.script;
+    assert lib.hasInfix "/var/lib/rust-storage-streamer-s3/s3-catalog.db" metricsUnit.script;
+    assert lib.hasInfix "s_streamer_catalog_last_success_unixtime" metricsUnit.script;
+    assert metricsTimer.timerConfig.OnBootSec == "1m";
+    assert metricsTimer.timerConfig.OnUnitActiveSec == "5m";
+    assert builtins.elem ./nixos/modules/applications/dashboards/s-streamer.json
+      rustStorageStreamerNode.config.infra.grafana.dashboards;
+    assert
+      (builtins.head rustStorageStreamerNode.config.infra.telemetry.node-metrics).targets
+      == [ "test:9100" ];
     assert ingress.proxyTo == [ "http://10.100.0.1:8081" ];
     assert lib.hasInfix "proxy_request_buffering off" ingress.routes.main.nginx.extraConfig;
     assert lib.hasInfix "client_max_body_size 0" nginxLocation.extraConfig;
