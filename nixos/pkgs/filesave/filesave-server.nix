@@ -8,12 +8,10 @@ let
   sources = {
     "x86_64-linux" = {
       # FileSave-1.0.1-Server-linux64, réhébergé après la perte de l'ancien
-      # lien. Ce fichier est le binaire tel qu'il tourne en production, donc
-      # déjà passé par autoPatchelfHook : son interpréteur ELF pointe vers un
-      # chemin du store. Le hook le repatche au build, les bibliothèques
-      # requises restant les mêmes (libgcc_s + glibc).
-      url = "https://wd40.theking90000.be/files/9efc8884-e563-4131-89dc-9004d9b246e3";
-      sha256 = "sha256-9woHJA+PMueCkUBUcpMjL7a6qQHkRbiJpZhdFe6rGKg=";
+      # lien. Artefact amont non patché (interpréteur /lib64), au hash
+      # inchangé depuis la première version de ce paquet.
+      url = "https://wd40.theking90000.be/files/726cb31b-28fd-4692-bcc4-2b80edf1a758";
+      sha256 = "sha256-oG0sbTVYr1zJX+rTW69A4Zv9W8rZEvtZri0l+f116VU=";
     };
   };
 
