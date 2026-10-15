@@ -110,6 +110,7 @@ catch typing errors.
 | `grafana` | Visualization and dashboards |
 | `backup` | Restic backup of registered paths |
 | `kanidm` | Identity and SSO |
+| `rauthy` | Independent identity application, separate from Kanidm SSO |
 | `applications/gitea` | Git forge |
 | `applications/docker-registry` | Private OCI registry |
 | `applications/jellyfin` | Media server |
@@ -185,6 +186,27 @@ credentials. The official list and alternative IAM policies are documented by
 
 These values never go in `config/acme/acme.nix`. You will enter them in
 `secrets/acme.json` after initialization.
+
+### Additional DNS providers
+
+Each `infra.acme.issuers.<name>` selects its own Lego `dnsProvider`. Keep
+OVH for its existing zone and add a second policy for a Cloudflare zone:
+
+```nix
+infra.acme.issuers.cloudflare = {
+  match.suffixes = [ "example.net" ];
+  email = "admin@example.net";
+  dnsProvider = "cloudflare";
+};
+```
+
+In `secrets/acme.json`, add `issuers.cloudflare.dnsCredentials` with the
+environment-file value `CF_DNS_API_TOKEN=<token>`. Give the token
+`Zone:Read` and `DNS:Edit` on that zone. `init-project` generates the right
+provider template for a new ACME file; add new issuers manually when the
+encrypted file already exists. No DNS transfer to OVH is required.
+
+For an independent Rauthy deployment, see [the Rauthy guide](RAUTHY.md).
 
 ## 6. Entering the environment
 

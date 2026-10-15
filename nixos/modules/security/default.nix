@@ -6,6 +6,7 @@
 #   - acme         : certificats TLS Let's Encrypt émis localement (issuers + claims)
 #   - sso          : registre interne des clients et groupes applicatifs
 #   - kanidm       : fournisseur d'identité SSO/OIDC/OAuth2/LDAPS (tag: kanidm)
+#   - rauthy       : application d'identité indépendante (tag: rauthy)
 #   - oauth2-proxy : SSO par proxy pour les apps sans OIDC natif (auto, sans tag)
 # -------------------------------------------------------------------------
 {
@@ -14,6 +15,7 @@
     ./acme.nix
     ./sso.nix
     ./kanidm.nix
+    ./rauthy.nix
     ./oauth2-proxy.nix
   ];
 }

@@ -59,14 +59,46 @@ done < <(jq -r '.nodes | keys[]' <<< "$NODES")
 # Credentials DNS par émetteur ACME : requis dès qu'un nœud consomme des
 # certificats (ingress web-server ou service direct comme kanidm).
 if has_tag "web-server" || has_tag "kanidm"; then
-  mapfile -t ISSUERS < <(
-    rg -o 'issuers\.([A-Za-z0-9-]+)' -r '$1' config/acme/*.nix 2> /dev/null | sort -u
-  )
-  [ "${#ISSUERS[@]}" -gt 0 ] || ISSUERS=(primary)
-  printf '%s\n' "${ISSUERS[@]}" \
-    | jq -Rn '{issuers: [inputs | select(length > 0) | {key: ., value: {dnsCredentials: "OVH_ENDPOINT=ovh-eu\nOVH_APPLICATION_KEY=CHANGEME\nOVH_APPLICATION_SECRET=CHANGEME\nOVH_CONSUMER_KEY=CHANGEME"}}] | from_entries}' \
+  if [ -f config/acme/acme.nix ]; then
+    ISSUER_PROVIDERS=$(nix-instantiate --eval --json --strict -E '
+      builtins.mapAttrs (_: issuer: issuer.dnsProvider)
+        (import ./config/acme/acme.nix).infra.acme.issuers
+    ')
+  else
+    ISSUER_PROVIDERS='{"primary":"ovh"}'
+  fi
+  jq -n --argjson providers "$ISSUER_PROVIDERS" '
+    {issuers: ($providers | with_entries(.value = {dnsCredentials:
+      (if .value == "ovh" then
+        "OVH_ENDPOINT=ovh-eu\nOVH_APPLICATION_KEY=CHANGEME\nOVH_APPLICATION_SECRET=CHANGEME\nOVH_CONSUMER_KEY=CHANGEME"
+      elif .value == "cloudflare" then "CF_DNS_API_TOKEN=CHANGEME"
+      else "CHANGEME: supply the Lego environment variables for this DNS provider"
+      end)
+    }))}
+  ' \
     > "$TMP/acme.json"
   encrypt_new "$TMP/acme.json" secrets/acme.json
+fi
+
+if has_tag "rauthy"; then
+  random_file "$TMP/rauthy-admin"
+  random_file "$TMP/rauthy-raft"
+  random_file "$TMP/rauthy-api"
+  # ENC_KEYS uses an ID followed by a base64-encoded 32-byte key.
+  openssl rand -base64 32 > "$TMP/rauthy-encryption"
+  jq -n \
+    --rawfile admin "$TMP/rauthy-admin" \
+    --rawfile raft "$TMP/rauthy-raft" \
+    --rawfile api "$TMP/rauthy-api" \
+    --rawfile encryption "$TMP/rauthy-encryption" \
+    '{environment: (
+      "ENC_KEY_ACTIVE=initial\n" +
+      "ENC_KEYS=initial/" + ($encryption | rtrimstr("\n")) + "\n" +
+      "HQL_SECRET_RAFT=" + ($raft | rtrimstr("\n")) + "\n" +
+      "HQL_SECRET_API=" + ($api | rtrimstr("\n")) + "\n" +
+      "BOOTSTRAP_ADMIN_PASSWORD_PLAIN=" + ($admin | rtrimstr("\n")) + "\n"
+    )}' > "$TMP/rauthy.json"
+  encrypt_new "$TMP/rauthy.json" secrets/rauthy.json
 fi
 
 if has_tag "backup"; then

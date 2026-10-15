@@ -11,6 +11,7 @@
     ./ntfy/ntfy.nix
     ./qbittorrent/qbittorrent.nix
     ./radarr/radarr.nix
+    ./rauthy/rauthy.nix
     ./rclone-sync/rclone-sync.nix
     ./reposilite/reposilite.nix
     ./rust-storage-streamer/rust-storage-streamer.nix
