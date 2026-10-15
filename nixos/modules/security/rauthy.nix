@@ -55,7 +55,8 @@ let
     user_registration.enable = cfg.registrationEnabled;
     webauthn = {
       rp_id = if publicHost == null then "" else publicHost;
-      rp_origin = origin;
+      # Rauthy requires the port explicitly, including the default HTTPS port.
+      rp_origin = "${origin}:443";
       rp_name = "Rauthy";
     };
   } // lib.optionalAttrs (cfg.smtp != null) {
