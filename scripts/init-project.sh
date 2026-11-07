@@ -184,7 +184,7 @@ fi
 # Radarr et Sonarr : la clé d'API est imposée au service par variable
 # d'environnement. 32 caractères hexadécimaux, le format que les
 # applications *arr génèrent elles-mêmes.
-for ARR in radarr sonarr sonarr-silly; do
+for ARR in radarr sonarr sonarr-silly radarr-silly; do
   if has_tag "applications/$ARR"; then
     jq -n --arg apiKey "$(openssl rand -hex 16)" '{api_key: $apiKey}' \
       > "$TMP/$ARR.json"

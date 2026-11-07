@@ -148,7 +148,7 @@ DELUGE_REPO="$TMP/deluge-repo"
 mkdir -p "$DELUGE_REPO/inventory/wireguard/vps1" "$DELUGE_REPO/config"
 touch "$DELUGE_REPO/inventory/nodes.nix" "$DELUGE_REPO/flake.nix"
 printf 'wireguard-private\n' > "$DELUGE_REPO/inventory/wireguard/vps1/private.key"
-DELUGE_NODE='{"nodes":{"vps1":{"tags":["applications/deluge","applications/sonarr-silly"]}}}'
+DELUGE_NODE='{"nodes":{"vps1":{"tags":["applications/deluge","applications/sonarr-silly","applications/radarr-silly"]}}}'
 (
   cd "$DELUGE_REPO"
   NODES_JSON="$DELUGE_NODE" bash "$ROOT/scripts/init-project.sh"
@@ -156,6 +156,8 @@ DELUGE_NODE='{"nodes":{"vps1":{"tags":["applications/deluge","applications/sonar
   jq -e '.webui_password | length == 64' secrets/deluge.json > /dev/null
   jq -e '.proxy_htpasswd | startswith("admin:$2")' secrets/deluge.json > /dev/null
   jq -e '.api_key | length == 32' secrets/sonarr-silly.json > /dev/null
+  jq -e '.api_key | length == 32' secrets/radarr-silly.json > /dev/null
+  test ! -f secrets/radarr.json
   test ! -f secrets/sonarr.json
   jq -r '.proxy_htpasswd' secrets/deluge.json > "$TMP/deluge.htpasswd"
   jq -r '.webui_password' secrets/deluge.json | htpasswd -vi "$TMP/deluge.htpasswd" admin

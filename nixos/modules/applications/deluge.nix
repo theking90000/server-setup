@@ -11,6 +11,13 @@ let
   enabled = services.hasTag tag;
   present = services.getHostsByTag tag != [ ];
   netns = cfg.networkNamespace;
+  webuiPorts = lib.concatStringsSep ", " (
+    map toString (
+      [ cfg.webuiPort ]
+      ++ lib.optional (services.hasTag "applications/sonarr-silly") 8990
+      ++ lib.optional (services.hasTag "applications/radarr-silly") 7879
+    )
+  );
   stateDir = "/var/lib/deluge";
   configDir = "${stateDir}/config";
   package = pkgs.deluge-2_x;
@@ -157,7 +164,6 @@ in
       systemd.tmpfiles.rules = [
         "d ${cfg.dataDirectory} 2770 root deluge-media -"
         "d ${cfg.dataDirectory}/downloads 2770 deluge deluge-media -"
-        "d ${cfg.dataDirectory}/series 2770 root deluge-media -"
       ];
       # Only the host's root-owned relays may enter these WebUIs. Other
       # namespace applications can use them over loopback, not via the host.
@@ -166,12 +172,12 @@ in
         content = ''
           chain output {
             type filter hook output priority 0; policy accept;
-            oifname "veth-qbt" tcp dport { ${toString cfg.webuiPort}, 8990 } meta skuid != 0 reject
+            oifname "veth-qbt" tcp dport { ${webuiPorts} } meta skuid != 0 reject
           }
         '';
       };
       systemd.services.deluge-vpn-guard = {
-        description = "Protect Deluge and Sonarr silly ports inside the shared VPN";
+        description = "Protect Deluge and Servarr silly ports inside the shared VPN";
         bindsTo = [ netns.unit ];
         after = [ netns.unit ];
         partOf = [ netns.unit ];
@@ -183,9 +189,9 @@ in
             table inet deluge_webui {
               chain input {
                 type filter hook input priority -10; policy accept;
-                iifname "lo" tcp dport { ${toString cfg.webuiPort}, 8990 } accept
-                iifname "veth-qbt-ns" ip saddr ${netns.hostAddress} tcp dport { ${toString cfg.webuiPort}, 8990 } accept
-                tcp dport { ${toString cfg.webuiPort}, 8990 } drop
+                iifname "lo" tcp dport { ${webuiPorts} } accept
+                iifname "veth-qbt-ns" ip saddr ${netns.hostAddress} tcp dport { ${webuiPorts} } accept
+                tcp dport { ${webuiPorts} } drop
               }
               chain output {
                 type filter hook output priority -10; policy accept;
@@ -193,6 +199,9 @@ in
                 oifname "veth-qbt-ns" meta skuid "deluge" reject
                 ${lib.optionalString (services.hasTag "applications/sonarr-silly") ''
                   oifname "veth-qbt-ns" meta skuid "sonarr-silly" reject
+                ''}
+                ${lib.optionalString (services.hasTag "applications/radarr-silly") ''
+                  oifname "veth-qbt-ns" meta skuid "radarr-silly" reject
                 ''}
               }
             }
@@ -211,7 +220,10 @@ in
         ];
         # Restart consumers when the namespace is recreated, including a
         # SOPS rotation. BindsTo alone only stops them.
-        partOf = [ netns.unit ];
+        partOf = [
+          netns.unit
+          "deluge-vpn-guard.service"
+        ];
         serviceConfig = sandbox // {
           ExecStart = "${package}/bin/deluged -d -c ${configDir} -u 127.0.0.1";
         };
@@ -245,7 +257,10 @@ in
           "deluge-vpn-guard.service"
           "deluged.service"
         ];
-        partOf = [ netns.unit ];
+        partOf = [
+          netns.unit
+          "deluge-vpn-guard.service"
+        ];
         serviceConfig = sandbox // {
           LoadCredential = [ "webui-password:/run/secrets/deluge/webui-password" ];
           ExecStartPre = "${pkgs.python3}/bin/python ${prepareWeb}";
