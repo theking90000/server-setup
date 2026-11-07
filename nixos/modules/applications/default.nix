@@ -16,7 +16,7 @@
 #   - reposilite         : gestionnaire de dépôts Maven (tag: applications/reposilite)
 #   - rust-storage-streamer : gateways Files et S3 sur Discord (tag: applications/rust-storage-streamer)
 #   - servarr            : Radarr et Sonarr (tags: applications/radarr, applications/sonarr)
-#   - servarr-silly     : instances Sonarr/Radarr séparées dans le VPN (tags: applications/{sonarr,radarr}-silly)
+#   - servarr-silly     : instances Sonarr/Radarr/Prowlarr séparées dans le VPN (tags: applications/{sonarr,radarr,prowlarr}-silly)
 #   - sncb-insights      : scraping des données de la SNCB (tag: applications/sncb-insights)
 #   - synapse            : homeserver Matrix fédéré (tag: applications/synapse)
 #   - www                : serveur de fichiers statiques (tag: applications/www)

@@ -13,6 +13,7 @@
     ./qbittorrent/qbittorrent.nix
     ./radarr/radarr.nix
     ./radarr-silly/radarr-silly.nix
+    ./prowlarr-silly/prowlarr-silly.nix
     ./rauthy/rauthy.nix
     ./rclone-sync/rclone-sync.nix
     ./reposilite/reposilite.nix

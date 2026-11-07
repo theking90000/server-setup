@@ -7,6 +7,12 @@
 }:
 let
   apps = {
+    prowlarr = {
+      option = "prowlarrSilly";
+      displayName = "Prowlarr";
+      port = 9697;
+      directory = null;
+    };
     sonarr = {
       option = "sonarrSilly";
       displayName = "Sonarr";
@@ -54,7 +60,7 @@ let
           '';
           restartUnits = [ "${instance}.service" ];
         };
-        systemd.tmpfiles.rules = [
+        systemd.tmpfiles.rules = lib.optionals (app.directory != null) [
           "d ${dataDirectory}/${app.directory} 2770 root deluge-media -"
         ];
         users.groups.${instance} = { };
@@ -86,7 +92,7 @@ let
           serviceConfig = {
             User = "${instance}";
             Group = "${instance}";
-            SupplementaryGroups = [ "deluge-media" ];
+            SupplementaryGroups = lib.optional (app.directory != null) "deluge-media";
             StateDirectory = "${instance}";
             StateDirectoryMode = "0700";
             WorkingDirectory = stateDir;
@@ -94,10 +100,7 @@ let
             EnvironmentFile = config.sops.templates."${instance}.env".path;
             NetworkNamespacePath = netns.path;
             BindReadOnlyPaths = [ "${netns.resolvConf}:/etc/resolv.conf" ];
-            BindPaths = [
-              stateDir
-              dataDirectory
-            ];
+            BindPaths = [ stateDir ] ++ lib.optional (app.directory != null) dataDirectory;
             TemporaryFileSystem = [
               "/var/lib:ro"
               "/mnt:ro"

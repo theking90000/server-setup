@@ -1,7 +1,7 @@
 # Deluge and independent Servarr silly instances
 
 Assign `applications/deluge`, `applications/sonarr-silly`,
-`applications/radarr-silly` and
+`applications/radarr-silly`, `applications/prowlarr-silly` and
 `applications/qbittorrent` to the same node. Deluge and the silly instances reuse
 qBittorrent's existing provider VPN namespace. No second WireGuard profile
 is needed.
@@ -14,6 +14,7 @@ instances run on `rpi1`:
 | --- | --- | --- | --- |
 | Existing Sonarr | `sonarr.service` | `/var/lib/sonarr` | 8989 |
 | Existing Radarr | `radarr.service` | `/var/lib/radarr` | 7878 |
+| Silly Prowlarr | `prowlarr-silly.service` | `/var/lib/prowlarr-silly` | 9697 |
 | Silly Radarr | `radarr-silly.service` | `/var/lib/radarr-silly` | 7879 |
 | Silly Sonarr | `sonarr-silly.service` | `/var/lib/sonarr-silly` | 8990 |
 | Silly Deluge | `deluged.service`, `deluge-web.service` | `/var/lib/deluge` | 8112 |
@@ -28,6 +29,7 @@ The private `config/` contains functional choices only:
   };
   infra.sonarrSilly.url = "https://sonarr.silly.6700067.xyz";
   infra.radarrSilly.url = "https://radarr.silly.6700067.xyz";
+  infra.prowlarrSilly.url = "https://prowlarr.silly.6700067.xyz";
 }
 ```
 
@@ -64,9 +66,10 @@ to connect to these new WebUI ports. Deluge RPC listens on loopback.
 The host relays listen on the Pi's mesh IP, with ACLs for `web-server`
 nodes and local root. No application port opens on the public interface.
 
-Each application has its own Unix user and private state. All can write
+Each application has its own Unix user and private state. Sonarr, Radarr and Deluge can write
 `/srv/deluge-media`, shared through the `deluge-media` group and setgid
-directories. Private mount namespaces mask other contents of `/var/lib`,
+directories. Prowlarr has access to its own state only, without the shared
+media group or a media bind mount. Private mount namespaces mask other contents of `/var/lib`,
 `/srv` and `/mnt`, including the existing media library. Homes, runtime
 SOPS secrets, backups and host logs are inaccessible. System files are
 read-only; public system files and packages remain readable as needed.
@@ -88,6 +91,11 @@ profiles remain configured through the UI, as for the existing Sonarr.
 For Radarr silly use root folder `/srv/deluge-media/movies` and category
 `radarr-silly` on the same Deluge client. The shared local paths need no
 remote path mapping.
+
+Prowlarr uses `/api/v1`; configure Sonarr and Radarr as applications using
+their internal namespace URLs and dedicated API keys. Their Prowlarr URL is
+`http://10.200.0.2:9697`. Add indexers to Prowlarr and sync them to the silly
+instances; the existing original instances remain independent.
 
 ## Verification and deployment
 

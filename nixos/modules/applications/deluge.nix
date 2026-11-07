@@ -16,6 +16,7 @@ let
       [ cfg.webuiPort ]
       ++ lib.optional (services.hasTag "applications/sonarr-silly") 8990
       ++ lib.optional (services.hasTag "applications/radarr-silly") 7879
+      ++ lib.optional (services.hasTag "applications/prowlarr-silly") 9697
     )
   );
   stateDir = "/var/lib/deluge";
@@ -202,6 +203,9 @@ in
                 ''}
                 ${lib.optionalString (services.hasTag "applications/radarr-silly") ''
                   oifname "veth-qbt-ns" meta skuid "radarr-silly" reject
+                ''}
+                ${lib.optionalString (services.hasTag "applications/prowlarr-silly") ''
+                  oifname "veth-qbt-ns" meta skuid "prowlarr-silly" reject
                 ''}
               }
             }

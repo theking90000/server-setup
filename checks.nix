@@ -85,6 +85,7 @@ let
           infra.deluge.url = inactiveServiceValue;
           infra.sonarrSilly.url = inactiveServiceValue;
           infra.radarrSilly.url = inactiveServiceValue;
+          infra.prowlarrSilly.url = inactiveServiceValue;
           infra.kanidm.url = inactiveServiceValue;
           infra.ntfy = {
             url = inactiveServiceValue;
@@ -332,6 +333,7 @@ let
             "applications/qbittorrent"
             "applications/sonarr-silly"
             "applications/radarr-silly"
+            "applications/prowlarr-silly"
             "applications/sonarr"
             "applications/radarr"
           ];
@@ -347,11 +349,12 @@ let
           infra.deluge.url = "https://deluge.example.test";
           infra.sonarrSilly.url = "https://sonarr-silly.example.test";
           infra.radarrSilly.url = "https://radarr-silly.example.test";
+          infra.prowlarrSilly.url = "https://prowlarr-silly.example.test";
         }
       ];
   sonarrSillyWithoutDelugeNode = mkNode {
     test = baseNode // {
-      tags = [ "applications/sonarr-silly" "applications/radarr-silly" ];
+      tags = [ "applications/sonarr-silly" "applications/radarr-silly" "applications/prowlarr-silly" ];
     };
   } [ ];
   delugeWebNode =
@@ -368,6 +371,7 @@ let
             "applications/qbittorrent"
             "applications/sonarr-silly"
             "applications/radarr-silly"
+            "applications/prowlarr-silly"
           ];
         };
       }
@@ -381,6 +385,7 @@ let
           infra.deluge.url = "https://deluge.example.test";
           infra.sonarrSilly.url = "https://sonarr-silly.example.test";
           infra.radarrSilly.url = "https://radarr-silly.example.test";
+          infra.prowlarrSilly.url = "https://prowlarr-silly.example.test";
         }
       ];
   joalNode =
@@ -1206,11 +1211,13 @@ in
         "deluge-web"
         "sonarr-silly"
         "radarr-silly"
+        "prowlarr-silly"
       ];
     in
     assert !(delugeNode.config.sops.secrets ? "deluge/wg.conf");
     assert assertSecret delugeNode "sonarr-silly/api-key" ./tests/sops/sonarr-silly.json "api_key";
     assert assertSecret delugeNode "radarr-silly/api-key" ./tests/sops/radarr-silly.json "api_key";
+    assert assertSecret delugeNode "prowlarr-silly/api-key" ./tests/sops/prowlarr-silly.json "api_key";
     assert lib.all (
       unit:
       unit.serviceConfig.NetworkNamespacePath == "/run/netns/qbittorrent"
@@ -1232,6 +1239,10 @@ in
     assert !(builtins.elem "/var/lib/radarr" c.systemd.services.radarr-silly.serviceConfig.BindPaths);
     assert c.systemd.sockets.radarr-silly-webui.listenStreams == [ "10.100.0.1:7879" ];
     assert c.infra.ingress.radarr-silly.proxyTo == [ "http://10.100.0.1:7879" ];
+    assert c.systemd.services.prowlarr-silly.serviceConfig.BindPaths == [ "/var/lib/prowlarr-silly" ];
+    assert c.systemd.services.prowlarr-silly.serviceConfig.SupplementaryGroups == [ ];
+    assert c.systemd.sockets.prowlarr-silly-webui.listenStreams == [ "10.100.0.1:9697" ];
+    assert c.infra.ingress.prowlarr-silly.proxyTo == [ "http://10.100.0.1:9697" ];
     assert c.services.qbittorrent.enable;
     assert c.systemd.sockets.sonarr-silly-webui.listenStreams == [ "10.100.0.1:8990" ];
     assert c.infra.ingress.deluge.proxyTo == [ "http://10.100.0.1:8112" ];
@@ -1252,6 +1263,8 @@ in
     assert c.services.nginx.virtualHosts."radarr-silly.example.test".locations."/".basicAuthFile
       == "/run/secrets/deluge/proxy-htpasswd";
     assert !(c.sops.secrets ? "deluge/wg.conf");
+    assert c.services.nginx.virtualHosts."prowlarr-silly.example.test".locations."/".basicAuthFile
+      == "/run/secrets/deluge/proxy-htpasswd";
     mkEvalCheck "deluge-web" delugeWebNode;
   sonarr-silly-requires-deluge =
     assert lib.any (
@@ -1259,6 +1272,9 @@ in
     ) sonarrSillyWithoutDelugeNode.config.assertions;
     assert lib.any (
       a: !a.assertion && lib.hasInfix "applications/radarr-silly requires" a.message
+    ) sonarrSillyWithoutDelugeNode.config.assertions;
+    assert lib.any (
+      a: !a.assertion && lib.hasInfix "applications/prowlarr-silly requires" a.message
     ) sonarrSillyWithoutDelugeNode.config.assertions;
     checkPkgs.runCommand "sonarr-silly-requires-deluge" { } ''touch "$out"'';
   joal =
