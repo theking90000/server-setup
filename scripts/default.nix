@@ -78,6 +78,7 @@ rec {
   init-project = pkgs.writeShellApplication {
     name = "init-project";
     runtimeInputs = [
+      pkgs.apacheHttpd
       adopt-hardware
       export-ssh-key
       generate-mesh

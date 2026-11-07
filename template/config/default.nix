@@ -2,6 +2,7 @@
   imports = [
     ./acme/acme.nix
     ./docker-registry/docker-registry.nix
+    ./deluge/deluge.nix
     ./filesave/filesave.nix
     ./gitea/gitea.nix
     ./grafana/grafana.nix
@@ -16,6 +17,7 @@
     ./reposilite/reposilite.nix
     ./rust-storage-streamer/rust-storage-streamer.nix
     ./sonarr/sonarr.nix
+    ./sonarr-silly/sonarr-silly.nix
     ./synapse/synapse.nix
     ./www/www.nix
   ];

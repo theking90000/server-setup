@@ -1,0 +1,99 @@
+# Deluge and an independent Sonarr silly instance
+
+Assign `applications/deluge`, `applications/sonarr-silly` and
+`applications/qbittorrent` to the same node. Deluge and Sonarr silly reuse
+qBittorrent's existing provider VPN namespace. No second WireGuard profile
+is needed.
+
+The existing `applications/sonarr` remains a separate instance, with its
+own URL, user, API key, database and port. For this deployment both Sonarr
+instances run on `rpi1`:
+
+| Instance | Unit | State | Mesh port |
+| --- | --- | --- | --- |
+| Existing Sonarr | `sonarr.service` | `/var/lib/sonarr` | 8989 |
+| Silly Sonarr | `sonarr-silly.service` | `/var/lib/sonarr-silly` | 8990 |
+| Silly Deluge | `deluged.service`, `deluge-web.service` | `/var/lib/deluge` | 8112 |
+
+The private `config/` contains functional choices only:
+
+```nix
+{
+  infra.deluge = {
+    url = "https://deluge.silly.6700067.xyz";
+    dataDirectory = "/srv/deluge-media";
+  };
+  infra.sonarrSilly.url = "https://sonarr.silly.6700067.xyz";
+}
+```
+
+## DNS, HTTPS and authentication
+
+Both DNS records are CNAMEs targeting `lb.theking90000.be`. The public entry
+forwards HTTPS requests to the Pi over its WireGuard mesh IP. The modules
+register their ingress and ACME claims; configure the matching ACME issuer
+in the private repository.
+
+`init-project` creates encrypted `secrets/deluge.json` and
+`secrets/sonarr-silly.json`. Both public interfaces use HTTP Basic
+authentication with username `admin`. The generated password is
+`webui_password` in `secrets/deluge.json`; `proxy_htpasswd` contains its
+bcrypt hash for nginx. Update both fields together when rotating it.
+Deluge additionally requires the same password in its WebUI. Sonarr silly
+uses external authentication behind nginx. The existing Sonarr's SSO
+configuration is independent.
+
+## Storage and network isolation
+
+Both new applications join `/run/netns/qbittorrent`, inherit its provider
+VPN routes and stop when `qbittorrent-netns.service` stops. Their restart
+relationships also follow a namespace restart. The existing Sonarr keeps
+its existing networking.
+
+A separate `deluge-vpn-guard.service` filters the two new WebUI ports inside
+that namespace, without filtering qBittorrent's or JOAL's ports. These
+interfaces accept connections from loopback and the host relay veth only.
+New outgoing connections from the two new application users to the host
+veth are rejected. The host firewall permits only root-owned local relays
+to connect to these new WebUI ports. Deluge RPC listens on loopback.
+
+The host relays listen on the Pi's mesh IP, with ACLs for `web-server`
+nodes and local root. No application port opens on the public interface.
+
+Each application has its own Unix user and private state. Both can write
+`/srv/deluge-media`, shared through the `deluge-media` group and setgid
+directories. Private mount namespaces mask other contents of `/var/lib`,
+`/srv` and `/mnt`, including the existing media library. Homes, runtime
+SOPS secrets, backups and host logs are inaccessible. System files are
+read-only; public system files and packages remain readable as needed.
+
+Restic includes the new application state and a consistent SQLite snapshot
+for Sonarr silly. Bulk downloads and series in `/srv/deluge-media` are not
+included automatically.
+
+## First application setup
+
+Deluge initially downloads to `/srv/deluge-media/downloads` and its WebUI
+connects to its local daemon. Preferences and torrents persist. Its WebUI
+password is imposed at every restart.
+
+In Sonarr silly, add `/srv/deluge-media/series` as a root folder. Add a
+Deluge download client using host `10.200.0.2`, port `8112`, no TLS and the
+Deluge WebUI password. Use category `sonarr-silly`. Indexers and quality
+profiles remain configured through the UI, as for the existing Sonarr.
+The shared local paths need no remote path mapping.
+
+## Verification and deployment
+
+Run the public flake checks and evaluate the private Colmena fleet. Build
+`rpi1` before switching it, then deploy the web entry nodes for ingress and
+certificates. When testing local public changes, use a temporary private
+flake with an `infra` input override; do not persist a machine-specific
+path in the private lock file.
+
+After activation, verify both Sonarr instances, the new namespace bindings,
+DNS, HTTPS authentication, protected paths and an import. Check that the
+new applications have no Internet fallback when the provider interface is
+down, and restore it immediately. Namespace or tunnel changes also affect
+qBittorrent and JOAL, so prefer a separate temporary namespace for destructive
+network tests.

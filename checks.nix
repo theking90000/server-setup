@@ -82,6 +82,8 @@ let
           };
           infra.jellyfin.url = inactiveServiceValue;
           infra.joal.url = inactiveServiceValue;
+          infra.deluge.url = inactiveServiceValue;
+          infra.sonarrSilly.url = inactiveServiceValue;
           infra.kanidm.url = inactiveServiceValue;
           infra.ntfy = {
             url = inactiveServiceValue;
@@ -318,6 +320,61 @@ let
             url = "https://qbt.example.test";
             torrentingPort = 62000;
           };
+        }
+      ];
+  delugeNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [
+            "applications/deluge"
+            "applications/qbittorrent"
+            "applications/sonarr-silly"
+            "applications/sonarr"
+          ];
+        };
+        web = baseNode // {
+          publicIp = "192.0.2.2";
+          vpnIp = "10.100.0.2";
+          tags = [ "web-server" ];
+        };
+      }
+      [
+        {
+          infra.deluge.url = "https://deluge.example.test";
+          infra.sonarrSilly.url = "https://sonarr-silly.example.test";
+        }
+      ];
+  sonarrSillyWithoutDelugeNode = mkNode {
+    test = baseNode // {
+      tags = [ "applications/sonarr-silly" ];
+    };
+  } [ ];
+  delugeWebNode =
+    mkNode
+      {
+        test = baseNode // {
+          tags = [ "web-server" ];
+        };
+        media = baseNode // {
+          publicIp = "192.0.2.2";
+          vpnIp = "10.100.0.2";
+          tags = [
+            "applications/deluge"
+            "applications/qbittorrent"
+            "applications/sonarr-silly"
+          ];
+        };
+      }
+      [
+        {
+          infra.acme.issuers.primary = {
+            match.suffixes = [ "example.test" ];
+            email = "test@example.test";
+            dnsProvider = "ovh";
+          };
+          infra.deluge.url = "https://deluge.example.test";
+          infra.sonarrSilly.url = "https://sonarr-silly.example.test";
         }
       ];
   joalNode =
@@ -1135,6 +1192,55 @@ in
       qbittorrentNode.config.systemd.services.qbittorrent.preStart;
     assert qbittorrentNode.config.infra.oauth2Proxy.apps == { };
     mkEvalCheck "qbittorrent" qbittorrentNode;
+  deluge-vpn =
+    let
+      c = delugeNode.config;
+      units = map (name: c.systemd.services.${name}) [
+        "deluged"
+        "deluge-web"
+        "sonarr-silly"
+      ];
+    in
+    assert !(delugeNode.config.sops.secrets ? "deluge/wg.conf");
+    assert assertSecret delugeNode "sonarr-silly/api-key" ./tests/sops/sonarr-silly.json "api_key";
+    assert lib.all (
+      unit:
+      unit.serviceConfig.NetworkNamespacePath == "/run/netns/qbittorrent"
+      && unit.serviceConfig.ProtectSystem == "strict"
+      && unit.serviceConfig.ProtectHome
+      && builtins.elem "/var/lib:ro" unit.serviceConfig.TemporaryFileSystem
+      && builtins.elem "qbittorrent-netns.service" unit.bindsTo
+      && builtins.elem "qbittorrent-netns.service" unit.partOf
+    ) units;
+    assert !(builtins.elem "/var/lib/deluge" c.systemd.services.sonarr-silly.serviceConfig.BindPaths);
+    assert !(builtins.elem "/var/lib/sonarr-silly" c.systemd.services.deluged.serviceConfig.BindPaths);
+    assert c.services.sonarr.enable;
+    assert c.services.sonarr.settings.server.port == 8989;
+    assert c.systemd.services.sonarr-silly.serviceConfig.StateDirectory == "sonarr-silly";
+    assert c.services.qbittorrent.enable;
+    assert c.systemd.sockets.sonarr-silly-webui.listenStreams == [ "10.100.0.1:8990" ];
+    assert c.infra.ingress.deluge.proxyTo == [ "http://10.100.0.1:8112" ];
+    assert c.infra.ingress.sonarr-silly.proxyTo == [ "http://10.100.0.1:8990" ];
+    assert !(c.sops.secrets ? "deluge/proxy-htpasswd");
+    mkEvalCheck "deluge-vpn" delugeNode;
+  deluge-web =
+    let
+      c = delugeWebNode.config;
+    in
+    assert c.sops.secrets."deluge/proxy-htpasswd".owner == "nginx";
+    assert
+      c.services.nginx.virtualHosts."deluge.example.test".locations."/".basicAuthFile
+      == "/run/secrets/deluge/proxy-htpasswd";
+    assert
+      c.services.nginx.virtualHosts."sonarr-silly.example.test".locations."/".basicAuthFile
+      == "/run/secrets/deluge/proxy-htpasswd";
+    assert !(c.sops.secrets ? "deluge/wg.conf");
+    mkEvalCheck "deluge-web" delugeWebNode;
+  sonarr-silly-requires-deluge =
+    assert lib.any (
+      a: !a.assertion && lib.hasInfix "applications/sonarr-silly requires" a.message
+    ) sonarrSillyWithoutDelugeNode.config.assertions;
+    checkPkgs.runCommand "sonarr-silly-requires-deluge" { } ''touch "$out"'';
   joal =
     let
       c = joalNode.config;
@@ -1487,7 +1593,7 @@ in
         touch "$out"
       '';
   infect-parser = checkPkgs.runCommand "infect-parser" { nativeBuildInputs = [ checkPkgs.bash ]; } ''
-    bash ${./scripts/test-infect.sh}
+    bash ${./scripts}/test-infect.sh
     touch "$out"
   '';
   sops-script =
@@ -1500,10 +1606,12 @@ in
           checkPkgs.gnused
           checkPkgs.jq
           checkPkgs.ripgrep
+          checkPkgs.apacheHttpd
+          checkPkgs.openssl
         ];
       }
       ''
-        bash ${./scripts/test-sops-project.sh}
+        ROOT=${./.} bash ${./scripts}/test-sops-project.sh
         touch "$out"
       '';
   script-packages = checkPkgs.symlinkJoin {

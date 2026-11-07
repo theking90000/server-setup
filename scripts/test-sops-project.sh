@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+ROOT=${ROOT:-$(cd "$(dirname "$0")/.." && pwd)}
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 MOCKS="$TMP/mocks"
@@ -11,7 +11,7 @@ make_mock() {
   local name=$1
   shift
   {
-    echo '#!/usr/bin/env bash'
+    printf '#!%s\n' "$(command -v bash)"
     echo 'set -euo pipefail'
     printf '%s\n' "$@"
   } > "$MOCKS/$name"
@@ -142,6 +142,26 @@ SYNAPSE_NODE='{"nodes":{"vps1":{"publicIp":"192.0.2.1","sshKey":"/tmp/key","sshP
   # kanidm consomme un certificat : secret ACME par émetteur, sans syncer
   jq -e '.issuers.primary.dnsCredentials | contains("CHANGEME")' secrets/acme.json > /dev/null
   test ! -f secrets/acme-syncer.json
+)
+
+DELUGE_REPO="$TMP/deluge-repo"
+mkdir -p "$DELUGE_REPO/inventory/wireguard/vps1" "$DELUGE_REPO/config"
+touch "$DELUGE_REPO/inventory/nodes.nix" "$DELUGE_REPO/flake.nix"
+printf 'wireguard-private\n' > "$DELUGE_REPO/inventory/wireguard/vps1/private.key"
+DELUGE_NODE='{"nodes":{"vps1":{"tags":["applications/deluge","applications/sonarr-silly"]}}}'
+(
+  cd "$DELUGE_REPO"
+  NODES_JSON="$DELUGE_NODE" bash "$ROOT/scripts/init-project.sh"
+  jq -e 'has("wgConf") | not' secrets/deluge.json > /dev/null
+  jq -e '.webui_password | length == 64' secrets/deluge.json > /dev/null
+  jq -e '.proxy_htpasswd | startswith("admin:$2")' secrets/deluge.json > /dev/null
+  jq -e '.api_key | length == 32' secrets/sonarr-silly.json > /dev/null
+  test ! -f secrets/sonarr.json
+  jq -r '.proxy_htpasswd' secrets/deluge.json > "$TMP/deluge.htpasswd"
+  jq -r '.webui_password' secrets/deluge.json | htpasswd -vi "$TMP/deluge.htpasswd" admin
+  cp secrets/deluge.json "$TMP/deluge-before.json"
+  NODES_JSON="$DELUGE_NODE" bash "$ROOT/scripts/init-project.sh"
+  cmp secrets/deluge.json "$TMP/deluge-before.json"
 )
 
 echo "SOPS project script tests passed."
