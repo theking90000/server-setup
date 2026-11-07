@@ -21,7 +21,17 @@ let
   );
   stateDir = "/var/lib/deluge";
   configDir = "${stateDir}/config";
-  package = pkgs.deluge-2_x;
+  package = pkgs.deluge-2_x.overrideAttrs (old: {
+    postInstall = (old.postInstall or "") + ''
+      # ExtJS serializes the file field as "[object FileList]". Read the
+      # selected File's name before the asynchronous form upload.
+      substituteInPlace "$out/${pkgs.python3.sitePackages}/deluge/ui/web/js/deluge-all-debug.js" \
+        --replace-fail 'onInstall: function (field, e) {' \
+          'onInstall: function (field, e) { this.pluginFilename = this.form.getForm().findField("file").fileInput.dom.files[0].name;' \
+        --replace-fail 'this.form.getForm().getFieldValues().file' \
+          'this.pluginFilename'
+    '';
+  });
   sandbox = {
     User = "deluge";
     Group = "deluge";
