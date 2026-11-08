@@ -104,13 +104,7 @@ let
   idmAdminPasswordFile = "/run/secrets/kanidm/idm-admin-password";
   useSopsIdmAdminPassword = enabled && sso != { };
 
-  kanidmBasePackage =
-    if pkgs ? kanidm_1_10 then
-      pkgs.kanidm_1_10
-    else if pkgs ? kanidm_1_9 then
-      pkgs.kanidm_1_9
-    else
-      pkgs.kanidm_1_8;
+  kanidmBasePackage = pkgs.kanidm_1_12
 
   kanidmPackage = if sso == { } then kanidmBasePackage else kanidmBasePackage.withSecretProvisioning;
 
