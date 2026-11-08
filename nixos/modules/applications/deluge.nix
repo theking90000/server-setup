@@ -11,6 +11,7 @@ let
   enabled = services.hasTag tag;
   present = services.getHostsByTag tag != [ ];
   netns = cfg.networkNamespace;
+  mediaCfg = config.infra.servarrSilly.mediaGroup;
   webuiPorts = lib.concatStringsSep ", " (
     map toString (
       [ cfg.webuiPort ]
@@ -35,7 +36,7 @@ let
   sandbox = {
     User = "deluge";
     Group = "deluge";
-    SupplementaryGroups = [ "deluge-media" ];
+    SupplementaryGroups = [ mediaCfg.name ];
     StateDirectory = "deluge";
     StateDirectoryMode = "0700";
     WorkingDirectory = stateDir;
@@ -166,15 +167,15 @@ in
         restartUnits = [ "deluge-web.service" ];
       };
       users.groups.deluge = { };
-      users.groups.deluge-media = { };
       users.users.deluge = {
         isSystemUser = true;
         group = "deluge";
+        extraGroups = [ mediaCfg.name ];
         home = stateDir;
       };
       systemd.tmpfiles.rules = [
-        "d ${cfg.dataDirectory} 2770 root deluge-media -"
-        "d ${cfg.dataDirectory}/downloads 2770 deluge deluge-media -"
+        "d ${cfg.dataDirectory} 2770 root ${mediaCfg.name} -"
+        "d ${cfg.dataDirectory}/downloads 2770 deluge ${mediaCfg.name} -"
       ];
       # Only the host's root-owned relays may enter these WebUIs. Other
       # namespace applications can use them over loopback, not via the host.

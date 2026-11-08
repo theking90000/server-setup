@@ -66,10 +66,11 @@ to connect to these new WebUI ports. Deluge RPC listens on loopback.
 The host relays listen on the Pi's mesh IP, with ACLs for `web-server`
 nodes and local root. No application port opens on the public interface.
 
-Each application has its own Unix user and private state. Sonarr, Radarr and Deluge can write
-`/srv/deluge-media`, shared through the `deluge-media` group and setgid
-directories. Prowlarr has access to its own state only, without the shared
-media group or a media bind mount. Private mount namespaces mask other contents of `/var/lib`,
+Each application has its own Unix user and private state. Sonarr, Radarr and
+Deluge can write `/srv/deluge-media`, shared through the `media-silly` group
+with fixed GID `2001` and setgid directories. All four application accounts
+belong to `media-silly`. Prowlarr has access to its own state only and does
+not bind the shared media directory. Private mount namespaces mask other contents of `/var/lib`,
 `/srv` and `/mnt`, including the existing media library. Homes, runtime
 SOPS secrets, backups and host logs are inaccessible. System files are
 read-only; public system files and packages remain readable as needed.
@@ -111,3 +112,16 @@ new applications have no Internet fallback when the provider interface is
 down, and restore it immediately. Namespace or tunnel changes also affect
 qBittorrent and JOAL, so prefer a separate temporary namespace for destructive
 network tests.
+
+## Shared media group
+
+`infra.servarrSilly.mediaGroup` exposes the group's `name`, `gid` and local
+`enable` status. Align a silly FUSE mount with these values, using
+`gid=${toString config.infra.servarrSilly.mediaGroup.gid}` and `umask=007`.
+The original stack keeps its separate `media` group and GID `2000`.
+
+When migrating from the older `deluge-media` group, stop the silly services,
+change only the files with that old GID under the shared data directory to
+`media-silly`, then restart the services. Preserve file owners, modes and
+application state. The application's systemd mount restrictions still apply
+independently of its Unix group membership.

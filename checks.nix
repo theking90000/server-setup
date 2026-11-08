@@ -1240,7 +1240,15 @@ in
     assert c.systemd.sockets.radarr-silly-webui.listenStreams == [ "10.100.0.1:7879" ];
     assert c.infra.ingress.radarr-silly.proxyTo == [ "http://10.100.0.1:7879" ];
     assert c.systemd.services.prowlarr-silly.serviceConfig.BindPaths == [ "/var/lib/prowlarr-silly" ];
-    assert c.systemd.services.prowlarr-silly.serviceConfig.SupplementaryGroups == [ ];
+    assert c.infra.servarrSilly.mediaGroup.enable;
+    assert c.users.groups.media-silly.gid == 2001;
+    assert c.users.groups.media.gid == 2000;
+    assert lib.all (unit: unit.serviceConfig.SupplementaryGroups == [ "media-silly" ]) units;
+    assert lib.all (name: c.users.users.${name}.extraGroups == [ "media-silly" ]) [
+      "deluge" "sonarr-silly" "radarr-silly" "prowlarr-silly"
+    ];
+    assert !(builtins.elem "media-silly" c.systemd.services.sonarr.serviceConfig.SupplementaryGroups);
+    assert !(builtins.elem "media-silly" c.systemd.services.radarr.serviceConfig.SupplementaryGroups);
     assert c.systemd.sockets.prowlarr-silly-webui.listenStreams == [ "10.100.0.1:9697" ];
     assert c.infra.ingress.prowlarr-silly.proxyTo == [ "http://10.100.0.1:9697" ];
     assert c.services.qbittorrent.enable;

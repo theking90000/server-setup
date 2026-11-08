@@ -26,6 +26,10 @@ let
       directory = "movies";
     };
   };
+  mediaCfg = config.infra.servarrSilly.mediaGroup;
+  anyEnabled =
+    services.hasTag "applications/deluge"
+    || lib.any (name: services.hasTag "applications/${name}-silly") (lib.attrNames apps);
   netns = config.infra.deluge.networkNamespace;
   dataDirectory = config.infra.deluge.dataDirectory;
   mkApp =
@@ -61,12 +65,13 @@ let
           restartUnits = [ "${instance}.service" ];
         };
         systemd.tmpfiles.rules = lib.optionals (app.directory != null) [
-          "d ${dataDirectory}/${app.directory} 2770 root deluge-media -"
+          "d ${dataDirectory}/${app.directory} 2770 root ${mediaCfg.name} -"
         ];
         users.groups.${instance} = { };
         users.users.${instance} = {
           isSystemUser = true;
           group = "${instance}";
+          extraGroups = [ mediaCfg.name ];
           home = stateDir;
         };
         systemd.services.${instance} = {
@@ -92,7 +97,7 @@ let
           serviceConfig = {
             User = "${instance}";
             Group = "${instance}";
-            SupplementaryGroups = lib.optional (app.directory != null) "deluge-media";
+            SupplementaryGroups = [ mediaCfg.name ];
             StateDirectory = "${instance}";
             StateDirectoryMode = "0700";
             WorkingDirectory = stateDir;
@@ -182,15 +187,45 @@ let
     ];
 in
 {
-  options.infra = lib.mapAttrs' (
-    _: app:
-    lib.nameValuePair app.option {
-      url = lib.mkOption {
-        type = lib.types.nullOr lib.types.str;
-        default = null;
-        description = "Public HTTPS URL of the independent ${app.displayName} VPN instance, protected by the Deluge HTTP Basic login.";
+  options.infra =
+    (lib.mapAttrs' (
+      _: app:
+      lib.nameValuePair app.option {
+        url = lib.mkOption {
+          type = lib.types.nullOr lib.types.str;
+          default = null;
+          description = "Public HTTPS URL of the independent ${app.displayName} VPN instance, protected by the Deluge HTTP Basic login.";
+        };
+      }
+    ) apps)
+    // {
+      servarrSilly.mediaGroup = {
+        enable = lib.mkOption {
+          type = lib.types.bool;
+          default = false;
+          internal = true;
+          description = "Whether Deluge or a silly application creates the shared media group on this node.";
+        };
+        name = lib.mkOption {
+          type = lib.types.str;
+          default = "media-silly";
+          readOnly = true;
+          internal = true;
+        };
+        gid = lib.mkOption {
+          type = lib.types.ints.positive;
+          default = 2001;
+          description = "Fixed GID for media-silly, also used by shared FUSE mounts. Changing it requires migrating existing file ownership.";
+        };
       };
-    }
-  ) apps;
-  config = lib.mkMerge (lib.mapAttrsToList mkApp apps);
+    };
+  config = lib.mkMerge (
+    (lib.mapAttrsToList mkApp apps)
+    ++ [
+      (lib.mkIf anyEnabled {
+        infra.servarrSilly.mediaGroup.enable = true;
+        users.groups.${mediaCfg.name}.gid = mediaCfg.gid;
+      })
+    ]
+  );
 }
