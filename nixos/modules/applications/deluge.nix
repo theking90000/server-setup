@@ -19,6 +19,7 @@ let
       ++ lib.optional (services.hasTag "applications/radarr-silly") 7879
       ++ lib.optional (services.hasTag "applications/prowlarr-silly") 9697
       ++ lib.optional (services.hasTag "applications/transmission-silly") 9091
+      ++ lib.optional (services.hasTag "applications/qbittorrent-silly") 8081
     )
   );
   stateDir = "/var/lib/deluge";
@@ -221,6 +222,9 @@ in
                 ''}
                 ${lib.optionalString (services.hasTag "applications/transmission-silly") ''
                   oifname "veth-qbt-ns" meta skuid "transmission-silly" reject
+                ''}
+                ${lib.optionalString (services.hasTag "applications/qbittorrent-silly") ''
+                  oifname "veth-qbt-ns" meta skuid "qbittorrent-silly" reject
                 ''}
               }
             }

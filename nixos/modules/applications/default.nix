@@ -12,6 +12,7 @@
 #   - jellyfin             : serveur multimédia (tag: applications/jellyfin)
 #   - joal               : client d'annonce dans le netns qBittorrent (tag: applications/joal)
 #   - ntfy               : serveur de notifications push (tag: applications/ntfy)
+#   - qbittorrent-silly  : instance indépendante dans le VPN partagé (tag: applications/qbittorrent-silly)
 #   - qbittorrent        : client BitTorrent isolé derrière un VPN tiers (tag: applications/qbittorrent)
 #   - reposilite         : gestionnaire de dépôts Maven (tag: applications/reposilite)
 #   - rust-storage-streamer : gateways Files et S3 sur Discord (tag: applications/rust-storage-streamer)
@@ -31,6 +32,7 @@
     ./jellyfin.nix
     ./joal.nix
     ./ntfy.nix
+    ./qbittorrent-silly.nix
     ./qbittorrent.nix
     ./reposilite.nix
     ./rust-storage-streamer.nix

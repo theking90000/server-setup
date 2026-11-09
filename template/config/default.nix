@@ -10,6 +10,7 @@
     ./joal/joal.nix
     ./kanidm/kanidm.nix
     ./ntfy/ntfy.nix
+    ./qbittorrent-silly/qbittorrent-silly.nix
     ./qbittorrent/qbittorrent.nix
     ./radarr/radarr.nix
     ./radarr-silly/radarr-silly.nix

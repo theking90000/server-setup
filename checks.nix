@@ -84,6 +84,7 @@ let
           infra.joal.url = inactiveServiceValue;
           infra.deluge.url = inactiveServiceValue;
           infra.transmissionSilly.url = inactiveServiceValue;
+          infra.qbittorrentSilly.url = inactiveServiceValue;
           infra.sonarrSilly.url = inactiveServiceValue;
           infra.radarrSilly.url = inactiveServiceValue;
           infra.prowlarrSilly.url = inactiveServiceValue;
@@ -336,6 +337,7 @@ let
             "applications/radarr-silly"
             "applications/prowlarr-silly"
             "applications/transmission-silly"
+            "applications/qbittorrent-silly"
             "applications/sonarr"
             "applications/radarr"
           ];
@@ -353,6 +355,7 @@ let
           infra.radarrSilly.url = "https://radarr-silly.example.test";
           infra.prowlarrSilly.url = "https://prowlarr-silly.example.test";
           infra.transmissionSilly.url = "https://transmission-silly.example.test";
+          infra.qbittorrentSilly.url = "https://qbittorrent-silly.example.test";
         }
       ];
   sonarrSillyWithoutDelugeNode = mkNode {
@@ -362,6 +365,7 @@ let
         "applications/radarr-silly"
         "applications/prowlarr-silly"
         "applications/transmission-silly"
+        "applications/qbittorrent-silly"
       ];
     };
   } [ ];
@@ -381,6 +385,7 @@ let
             "applications/radarr-silly"
             "applications/prowlarr-silly"
             "applications/transmission-silly"
+            "applications/qbittorrent-silly"
           ];
         };
       }
@@ -396,6 +401,7 @@ let
           infra.radarrSilly.url = "https://radarr-silly.example.test";
           infra.prowlarrSilly.url = "https://prowlarr-silly.example.test";
           infra.transmissionSilly.url = "https://transmission-silly.example.test";
+          infra.qbittorrentSilly.url = "https://qbittorrent-silly.example.test";
         }
       ];
   joalNode =
@@ -1223,6 +1229,7 @@ in
         "radarr-silly"
         "prowlarr-silly"
         "transmission-silly"
+        "qbittorrent-silly"
       ];
     in
     assert !(delugeNode.config.sops.secrets ? "deluge/wg.conf");
@@ -1261,6 +1268,7 @@ in
       "radarr-silly"
       "prowlarr-silly"
       "transmission-silly"
+      "qbittorrent-silly"
     ];
     assert !(builtins.elem "media-silly" c.systemd.services.sonarr.serviceConfig.SupplementaryGroups);
     assert !(builtins.elem "media-silly" c.systemd.services.radarr.serviceConfig.SupplementaryGroups);
@@ -1287,6 +1295,26 @@ in
     );
     assert builtins.elem "/var/lib/transmission-silly" c.infra.backup.paths;
     assert !(c.systemd.services ? transmission);
+    assert assertSecret delugeNode "qbittorrent-silly/webui-password" ./tests/sops/deluge.json
+      "webui_password";
+    assert c.systemd.services.qbittorrent-silly.serviceConfig.StateDirectory == "qbittorrent-silly";
+    assert c.systemd.services.qbittorrent-silly.serviceConfig.StateDirectoryMode == "0700";
+    assert
+      c.systemd.services.qbittorrent-silly.serviceConfig.BindPaths == [
+        "/var/lib/qbittorrent-silly"
+        "/srv/deluge-media"
+      ];
+    assert
+      !(builtins.elem "/var/lib/qBittorrent" c.systemd.services.qbittorrent-silly.serviceConfig.BindPaths);
+    assert
+      c.systemd.services.qbittorrent-silly.serviceConfig.LoadCredential == [
+        "webui-password:/run/secrets/qbittorrent-silly/webui-password"
+      ];
+    assert c.systemd.sockets.qbittorrent-silly-webui.listenStreams == [ "10.100.0.1:8081" ];
+    assert c.systemd.sockets.qbittorrent-webui.listenStreams == [ "10.100.0.1:8080" ];
+    assert c.infra.ingress.qbittorrent-silly.proxyTo == [ "http://10.100.0.1:8081" ];
+    assert lib.hasInfix "8081" c.networking.nftables.tables.deluge-webui.content;
+    assert builtins.elem "/var/lib/qbittorrent-silly" c.infra.backup.paths;
     assert c.services.qbittorrent.enable;
     assert c.systemd.sockets.sonarr-silly-webui.listenStreams == [ "10.100.0.1:8990" ];
     assert c.infra.ingress.deluge.proxyTo == [ "http://10.100.0.1:8112" ];
@@ -1315,6 +1343,10 @@ in
       c.services.nginx.virtualHosts."transmission-silly.example.test".locations."/".basicAuthFile
       == "/run/secrets/deluge/proxy-htpasswd";
     assert !(c.systemd.services ? transmission-silly);
+    assert !(c.systemd.services ? qbittorrent-silly);
+    assert
+      c.services.nginx.virtualHosts."qbittorrent-silly.example.test".locations."/".basicAuthFile
+      == "/run/secrets/deluge/proxy-htpasswd";
     mkEvalCheck "deluge-web" delugeWebNode;
   sonarr-silly-requires-deluge =
     assert lib.any (
@@ -1328,6 +1360,9 @@ in
     ) sonarrSillyWithoutDelugeNode.config.assertions;
     assert lib.any (
       a: !a.assertion && lib.hasInfix "applications/transmission-silly requires" a.message
+    ) sonarrSillyWithoutDelugeNode.config.assertions;
+    assert lib.any (
+      a: !a.assertion && lib.hasInfix "applications/qbittorrent-silly requires" a.message
     ) sonarrSillyWithoutDelugeNode.config.assertions;
     checkPkgs.runCommand "sonarr-silly-requires-deluge" { } ''touch "$out"'';
   joal =

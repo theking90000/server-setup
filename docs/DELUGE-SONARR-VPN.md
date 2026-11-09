@@ -1,8 +1,8 @@
-# Deluge, Transmission and independent Servarr silly instances
+# Deluge, Transmission, qBittorrent and independent Servarr silly instances
 
 Assign `applications/deluge`, `applications/sonarr-silly`,
 `applications/radarr-silly`, `applications/prowlarr-silly`,
-`applications/transmission-silly` and
+`applications/transmission-silly`, `applications/qbittorrent-silly` and
 `applications/qbittorrent` to the same node. Deluge and the silly instances reuse
 qBittorrent's existing provider VPN namespace. No second WireGuard profile
 is needed.
@@ -18,6 +18,7 @@ instances run on `rpi1`:
 | Silly Prowlarr | `prowlarr-silly.service` | `/var/lib/prowlarr-silly` | 9697 |
 | Silly Radarr | `radarr-silly.service` | `/var/lib/radarr-silly` | 7879 |
 | Silly Sonarr | `sonarr-silly.service` | `/var/lib/sonarr-silly` | 8990 |
+| Silly qBittorrent | `qbittorrent-silly.service` | `/var/lib/qbittorrent-silly` | 8081 |
 | Silly Transmission | `transmission-silly.service` | `/var/lib/transmission-silly` | 9091 |
 | Silly Deluge | `deluged.service`, `deluge-web.service` | `/var/lib/deluge` | 8112 |
 
@@ -33,6 +34,7 @@ The private `config/` contains functional choices only:
   infra.radarrSilly.url = "https://radarr.silly.6700067.xyz";
   infra.prowlarrSilly.url = "https://prowlarr.silly.6700067.xyz";
   infra.transmissionSilly.url = "https://transmission.silly.6700067.xyz";
+  infra.qbittorrentSilly.url = "https://qbittorrent.silly.6700067.xyz";
 }
 ```
 
@@ -72,9 +74,9 @@ to connect to these new WebUI ports. Deluge RPC listens on loopback.
 The host relays listen on the Pi's mesh IP, with ACLs for `web-server`
 nodes and local root. No application port opens on the public interface.
 
-Each application has its own Unix user and private state. Sonarr, Radarr and
-Deluge and Transmission can write `/srv/deluge-media`, shared through the `media-silly` group
-with fixed GID `2001` and setgid directories. All five silly application accounts
+Each application has its own Unix user and private state. Sonarr, Radarr, Deluge,
+Transmission and qBittorrent silly can write `/srv/deluge-media`, shared through
+the `media-silly` group with fixed GID `2001` and setgid directories. All six silly application accounts
 belong to `media-silly`. Prowlarr has access to its own state only and does
 not bind the shared media directory. Private mount namespaces mask other contents of `/var/lib`,
 `/srv` and `/mnt`, including the existing media library. Homes, runtime
@@ -97,6 +99,15 @@ with partial files in `/srv/deluge-media/transmission/incomplete`. Its WebUI is 
 State and preferences persist independently of Deluge. The module enforces its
 RPC authentication, access lists, disabled UPnP/NAT-PMP and `007` umask at restart.
 It reuses `secrets/deluge.json`; no additional secret is required.
+
+qBittorrent silly has a separate profile and uses the same `admin` credentials
+as Deluge. Its password is hashed with PBKDF2 at startup using a systemd
+credential. It requires authentication even on loopback and the host veth;
+it has no SSO bypass. The WebUI binds to `10.200.0.2:8081`, and peer traffic
+binds to `wg-qbt` on port `51414`. UPnP/NAT-PMP and local peer discovery are
+disabled. It initially uses `/srv/deluge-media/qbittorrent/downloads` and
+`/srv/deluge-media/qbittorrent/incomplete`. Its state is included in backups.
+The original qBittorrent keeps its own profile, authentication and ports.
 
 In Sonarr silly, add `/srv/deluge-media/series` as a root folder. Add a
 Deluge download client using host `10.200.0.2`, port `8112`, no TLS and the
