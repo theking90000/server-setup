@@ -18,6 +18,7 @@ let
       ++ lib.optional (services.hasTag "applications/sonarr-silly") 8990
       ++ lib.optional (services.hasTag "applications/radarr-silly") 7879
       ++ lib.optional (services.hasTag "applications/prowlarr-silly") 9697
+      ++ lib.optional (services.hasTag "applications/transmission-silly") 9091
     )
   );
   stateDir = "/var/lib/deluge";
@@ -189,7 +190,7 @@ in
         '';
       };
       systemd.services.deluge-vpn-guard = {
-        description = "Protect Deluge and Servarr silly ports inside the shared VPN";
+        description = "Protect silly application ports inside the shared VPN";
         bindsTo = [ netns.unit ];
         after = [ netns.unit ];
         partOf = [ netns.unit ];
@@ -217,6 +218,9 @@ in
                 ''}
                 ${lib.optionalString (services.hasTag "applications/prowlarr-silly") ''
                   oifname "veth-qbt-ns" meta skuid "prowlarr-silly" reject
+                ''}
+                ${lib.optionalString (services.hasTag "applications/transmission-silly") ''
+                  oifname "veth-qbt-ns" meta skuid "transmission-silly" reject
                 ''}
               }
             }

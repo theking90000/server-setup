@@ -83,6 +83,7 @@ let
           infra.jellyfin.url = inactiveServiceValue;
           infra.joal.url = inactiveServiceValue;
           infra.deluge.url = inactiveServiceValue;
+          infra.transmissionSilly.url = inactiveServiceValue;
           infra.sonarrSilly.url = inactiveServiceValue;
           infra.radarrSilly.url = inactiveServiceValue;
           infra.prowlarrSilly.url = inactiveServiceValue;
@@ -334,6 +335,7 @@ let
             "applications/sonarr-silly"
             "applications/radarr-silly"
             "applications/prowlarr-silly"
+            "applications/transmission-silly"
             "applications/sonarr"
             "applications/radarr"
           ];
@@ -350,11 +352,17 @@ let
           infra.sonarrSilly.url = "https://sonarr-silly.example.test";
           infra.radarrSilly.url = "https://radarr-silly.example.test";
           infra.prowlarrSilly.url = "https://prowlarr-silly.example.test";
+          infra.transmissionSilly.url = "https://transmission-silly.example.test";
         }
       ];
   sonarrSillyWithoutDelugeNode = mkNode {
     test = baseNode // {
-      tags = [ "applications/sonarr-silly" "applications/radarr-silly" "applications/prowlarr-silly" ];
+      tags = [
+        "applications/sonarr-silly"
+        "applications/radarr-silly"
+        "applications/prowlarr-silly"
+        "applications/transmission-silly"
+      ];
     };
   } [ ];
   delugeWebNode =
@@ -372,6 +380,7 @@ let
             "applications/sonarr-silly"
             "applications/radarr-silly"
             "applications/prowlarr-silly"
+            "applications/transmission-silly"
           ];
         };
       }
@@ -386,6 +395,7 @@ let
           infra.sonarrSilly.url = "https://sonarr-silly.example.test";
           infra.radarrSilly.url = "https://radarr-silly.example.test";
           infra.prowlarrSilly.url = "https://prowlarr-silly.example.test";
+          infra.transmissionSilly.url = "https://transmission-silly.example.test";
         }
       ];
   joalNode =
@@ -1212,6 +1222,7 @@ in
         "sonarr-silly"
         "radarr-silly"
         "prowlarr-silly"
+        "transmission-silly"
       ];
     in
     assert !(delugeNode.config.sops.secrets ? "deluge/wg.conf");
@@ -1245,12 +1256,37 @@ in
     assert c.users.groups.media.gid == 2000;
     assert lib.all (unit: unit.serviceConfig.SupplementaryGroups == [ "media-silly" ]) units;
     assert lib.all (name: c.users.users.${name}.extraGroups == [ "media-silly" ]) [
-      "deluge" "sonarr-silly" "radarr-silly" "prowlarr-silly"
+      "deluge"
+      "sonarr-silly"
+      "radarr-silly"
+      "prowlarr-silly"
+      "transmission-silly"
     ];
     assert !(builtins.elem "media-silly" c.systemd.services.sonarr.serviceConfig.SupplementaryGroups);
     assert !(builtins.elem "media-silly" c.systemd.services.radarr.serviceConfig.SupplementaryGroups);
     assert c.systemd.sockets.prowlarr-silly-webui.listenStreams == [ "10.100.0.1:9697" ];
     assert c.infra.ingress.prowlarr-silly.proxyTo == [ "http://10.100.0.1:9697" ];
+    assert assertSecret delugeNode "transmission-silly/rpc-password" ./tests/sops/deluge.json
+      "webui_password";
+    assert c.systemd.services.transmission-silly.serviceConfig.StateDirectory == "transmission-silly";
+    assert c.systemd.services.transmission-silly.serviceConfig.StateDirectoryMode == "0700";
+    assert
+      c.systemd.services.transmission-silly.serviceConfig.BindPaths == [
+        "/var/lib/transmission-silly"
+        "/srv/deluge-media"
+      ];
+    assert
+      c.systemd.services.transmission-silly.serviceConfig.LoadCredential == [
+        "rpc-password:/run/secrets/transmission-silly/rpc-password"
+      ];
+    assert c.systemd.sockets.transmission-silly-webui.listenStreams == [ "10.100.0.1:9091" ];
+    assert c.infra.ingress.transmission-silly.proxyTo == [ "http://10.100.0.1:9091" ];
+    assert lib.hasInfix "9091" c.networking.nftables.tables.deluge-webui.content;
+    assert lib.hasInfix "2770 transmission-silly media-silly" (
+      lib.concatStringsSep "\n" c.systemd.tmpfiles.rules
+    );
+    assert builtins.elem "/var/lib/transmission-silly" c.infra.backup.paths;
+    assert !(c.systemd.services ? transmission);
     assert c.services.qbittorrent.enable;
     assert c.systemd.sockets.sonarr-silly-webui.listenStreams == [ "10.100.0.1:8990" ];
     assert c.infra.ingress.deluge.proxyTo == [ "http://10.100.0.1:8112" ];
@@ -1268,11 +1304,17 @@ in
     assert
       c.services.nginx.virtualHosts."sonarr-silly.example.test".locations."/".basicAuthFile
       == "/run/secrets/deluge/proxy-htpasswd";
-    assert c.services.nginx.virtualHosts."radarr-silly.example.test".locations."/".basicAuthFile
+    assert
+      c.services.nginx.virtualHosts."radarr-silly.example.test".locations."/".basicAuthFile
       == "/run/secrets/deluge/proxy-htpasswd";
     assert !(c.sops.secrets ? "deluge/wg.conf");
-    assert c.services.nginx.virtualHosts."prowlarr-silly.example.test".locations."/".basicAuthFile
+    assert
+      c.services.nginx.virtualHosts."prowlarr-silly.example.test".locations."/".basicAuthFile
       == "/run/secrets/deluge/proxy-htpasswd";
+    assert
+      c.services.nginx.virtualHosts."transmission-silly.example.test".locations."/".basicAuthFile
+      == "/run/secrets/deluge/proxy-htpasswd";
+    assert !(c.systemd.services ? transmission-silly);
     mkEvalCheck "deluge-web" delugeWebNode;
   sonarr-silly-requires-deluge =
     assert lib.any (
@@ -1283,6 +1325,9 @@ in
     ) sonarrSillyWithoutDelugeNode.config.assertions;
     assert lib.any (
       a: !a.assertion && lib.hasInfix "applications/prowlarr-silly requires" a.message
+    ) sonarrSillyWithoutDelugeNode.config.assertions;
+    assert lib.any (
+      a: !a.assertion && lib.hasInfix "applications/transmission-silly requires" a.message
     ) sonarrSillyWithoutDelugeNode.config.assertions;
     checkPkgs.runCommand "sonarr-silly-requires-deluge" { } ''touch "$out"'';
   joal =

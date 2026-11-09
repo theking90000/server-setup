@@ -19,6 +19,7 @@
 #   - servarr-silly     : instances Sonarr/Radarr/Prowlarr séparées dans le VPN (tags: applications/{sonarr,radarr,prowlarr}-silly)
 #   - sncb-insights      : scraping des données de la SNCB (tag: applications/sncb-insights)
 #   - synapse            : homeserver Matrix fédéré (tag: applications/synapse)
+#   - transmission-silly : client BitTorrent silly dans le VPN partagé (tag: applications/transmission-silly)
 #   - www                : serveur de fichiers statiques (tag: applications/www)
 # -------------------------------------------------------------------------
 {
@@ -37,6 +38,7 @@
     ./servarr-silly.nix
     ./sncb-insights.nix
     ./synapse.nix
+    ./transmission-silly.nix
     ./www.nix
   ];
 }

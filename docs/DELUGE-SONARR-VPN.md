@@ -1,7 +1,8 @@
-# Deluge and independent Servarr silly instances
+# Deluge, Transmission and independent Servarr silly instances
 
 Assign `applications/deluge`, `applications/sonarr-silly`,
-`applications/radarr-silly`, `applications/prowlarr-silly` and
+`applications/radarr-silly`, `applications/prowlarr-silly`,
+`applications/transmission-silly` and
 `applications/qbittorrent` to the same node. Deluge and the silly instances reuse
 qBittorrent's existing provider VPN namespace. No second WireGuard profile
 is needed.
@@ -17,6 +18,7 @@ instances run on `rpi1`:
 | Silly Prowlarr | `prowlarr-silly.service` | `/var/lib/prowlarr-silly` | 9697 |
 | Silly Radarr | `radarr-silly.service` | `/var/lib/radarr-silly` | 7879 |
 | Silly Sonarr | `sonarr-silly.service` | `/var/lib/sonarr-silly` | 8990 |
+| Silly Transmission | `transmission-silly.service` | `/var/lib/transmission-silly` | 9091 |
 | Silly Deluge | `deluged.service`, `deluge-web.service` | `/var/lib/deluge` | 8112 |
 
 The private `config/` contains functional choices only:
@@ -30,6 +32,7 @@ The private `config/` contains functional choices only:
   infra.sonarrSilly.url = "https://sonarr.silly.6700067.xyz";
   infra.radarrSilly.url = "https://radarr.silly.6700067.xyz";
   infra.prowlarrSilly.url = "https://prowlarr.silly.6700067.xyz";
+  infra.transmissionSilly.url = "https://transmission.silly.6700067.xyz";
 }
 ```
 
@@ -45,7 +48,10 @@ in the private repository.
 authentication with username `admin`. The generated password is
 `webui_password` in `secrets/deluge.json`; `proxy_htpasswd` contains its
 bcrypt hash for nginx. Update both fields together when rotating it.
-Deluge additionally requires the same password in its WebUI. Sonarr and Radarr silly
+Deluge additionally requires the same password in its WebUI. Transmission RPC
+uses username `admin` and the same password, loaded through a systemd credential.
+Transmission rewrites its runtime password as a salted hash; it is never passed
+in process arguments or stored in the Nix store. Sonarr and Radarr silly
 use external authentication behind nginx. The existing Sonarr's SSO
 configuration is independent.
 
@@ -67,8 +73,8 @@ The host relays listen on the Pi's mesh IP, with ACLs for `web-server`
 nodes and local root. No application port opens on the public interface.
 
 Each application has its own Unix user and private state. Sonarr, Radarr and
-Deluge can write `/srv/deluge-media`, shared through the `media-silly` group
-with fixed GID `2001` and setgid directories. All four application accounts
+Deluge and Transmission can write `/srv/deluge-media`, shared through the `media-silly` group
+with fixed GID `2001` and setgid directories. All five silly application accounts
 belong to `media-silly`. Prowlarr has access to its own state only and does
 not bind the shared media directory. Private mount namespaces mask other contents of `/var/lib`,
 `/srv` and `/mnt`, including the existing media library. Homes, runtime
@@ -84,6 +90,13 @@ included automatically.
 Deluge initially downloads to `/srv/deluge-media/downloads` and its WebUI
 connects to its local daemon. Preferences and torrents persist. Its WebUI
 password is imposed at every restart.
+
+Transmission initially downloads to `/srv/deluge-media/transmission/downloads`,
+with partial files in `/srv/deluge-media/transmission/incomplete`. Its WebUI is at
+`/transmission/web/` and its RPC endpoint is `/transmission/rpc` on port `9091`.
+State and preferences persist independently of Deluge. The module enforces its
+RPC authentication, access lists, disabled UPnP/NAT-PMP and `007` umask at restart.
+It reuses `secrets/deluge.json`; no additional secret is required.
 
 In Sonarr silly, add `/srv/deluge-media/series` as a root folder. Add a
 Deluge download client using host `10.200.0.2`, port `8112`, no TLS and the

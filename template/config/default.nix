@@ -21,6 +21,7 @@
     ./sonarr/sonarr.nix
     ./sonarr-silly/sonarr-silly.nix
     ./synapse/synapse.nix
+    ./transmission-silly/transmission-silly.nix
     ./www/www.nix
   ];
 }
