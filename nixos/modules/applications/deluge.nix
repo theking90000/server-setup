@@ -43,7 +43,7 @@ let
     StateDirectoryMode = "0700";
     WorkingDirectory = stateDir;
     NetworkNamespacePath = netns.path;
-    BindReadOnlyPaths = [ "${netns.resolvConf}:/etc/resolv.conf" ];
+    BindReadOnlyPaths = [ "${netns.resolvConf}:/etc/resolv.conf" ] ++ cfg.allowPaths;
     BindPaths = [
       stateDir
       cfg.dataDirectory
@@ -141,6 +141,12 @@ in
       default = "/srv/deluge-media";
       description = "Dedicated local storage shared with Sonarr VPN, excluding application state.";
     };
+    allowPaths = lib.mkOption {
+      type = lib.types.listOf (lib.types.strMatching "/[^:\n]+");
+      default = [ ];
+      example = [ "/mnt/silly-media" ];
+      description = "Additional absolute host paths exposed read-only at the same path inside the service. Unix permissions still apply.";
+    };
     networkNamespace = lib.mkOption {
       internal = true;
       readOnly = true;
@@ -234,6 +240,7 @@ in
       };
       systemd.services.deluged = {
         description = "Deluge daemon in the provider VPN";
+        unitConfig.RequiresMountsFor = cfg.allowPaths;
         wantedBy = [ "multi-user.target" ];
         requires = [ "deluge-vpn-guard.service" ];
         bindsTo = [ netns.unit ];
@@ -269,6 +276,7 @@ in
       };
       systemd.services.deluge-web = {
         description = "Deluge WebUI in the provider VPN";
+        unitConfig.RequiresMountsFor = cfg.allowPaths;
         wantedBy = [ "multi-user.target" ];
         requires = [
           "deluged.service"

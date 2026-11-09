@@ -83,6 +83,21 @@ not bind the shared media directory. Private mount namespaces mask other content
 SOPS secrets, backups and host logs are inaccessible. System files are
 read-only; public system files and packages remain readable as needed.
 
+Each silly application exposes an `allowPaths` list under its own `infra`
+options: `deluge`, `sonarrSilly`, `radarrSilly`, `prowlarrSilly`,
+`transmissionSilly` and `qbittorrentSilly`. The default is empty. For example:
+
+```nix
+infra.qbittorrentSilly.allowPaths = [ "/mnt/media-s3v2" ];
+```
+
+These absolute runtime paths are bound read-only at their original locations
+inside the service. Unix traversal and read permissions still apply. Services
+require the corresponding host mounts before starting. Add a symlink's target
+path, not just the directory containing the symlink. Other host paths remain
+masked. Explicitly allowing a path also makes it visible to Prowlarr, whose
+default filesystem access is limited to its own state.
+
 Restic includes the new application state and a consistent SQLite snapshot
 for Sonarr and Radarr silly. Bulk downloads and series in `/srv/deluge-media` are not
 included automatically.

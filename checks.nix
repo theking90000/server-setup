@@ -358,6 +358,25 @@ let
           infra.qbittorrentSilly.url = "https://qbittorrent-silly.example.test";
         }
       ];
+  sillyAllowedPathsNode = delugeNode.extendModules {
+    modules = [
+      {
+        infra =
+          lib.genAttrs
+            [
+              "deluge"
+              "sonarrSilly"
+              "radarrSilly"
+              "prowlarrSilly"
+              "transmissionSilly"
+              "qbittorrentSilly"
+            ]
+            (_: {
+              allowPaths = [ "/mnt/silly-media" ];
+            });
+      }
+    ];
+  };
   sonarrSillyWithoutDelugeNode = mkNode {
     test = baseNode // {
       tags = [
@@ -1321,6 +1340,41 @@ in
     assert c.infra.ingress.sonarr-silly.proxyTo == [ "http://10.100.0.1:8990" ];
     assert !(c.sops.secrets ? "deluge/proxy-htpasswd");
     mkEvalCheck "deluge-vpn" delugeNode;
+  silly-allowed-paths =
+    let
+      c = sillyAllowedPathsNode.config;
+      names = [
+        "deluged"
+        "deluge-web"
+        "sonarr-silly"
+        "radarr-silly"
+        "prowlarr-silly"
+        "transmission-silly"
+        "qbittorrent-silly"
+      ];
+    in
+    assert lib.all (
+      name:
+      builtins.elem "/mnt/silly-media" c.systemd.services.${name}.serviceConfig.BindReadOnlyPaths
+      && !(builtins.elem "/mnt/silly-media" c.systemd.services.${name}.serviceConfig.BindPaths)
+      && c.systemd.services.${name}.unitConfig.RequiresMountsFor == [ "/mnt/silly-media" ]
+      && !(builtins.elem "/mnt/silly-media"
+        delugeNode.config.systemd.services.${name}.serviceConfig.BindReadOnlyPaths
+      )
+    ) names;
+    assert lib.all
+      (
+        name:
+        !(builtins.elem "/mnt/silly-media" (
+          lib.toList (c.systemd.services.${name}.serviceConfig.BindReadOnlyPaths or [ ])
+        ))
+      )
+      [
+        "qbittorrent"
+        "sonarr"
+        "radarr"
+      ];
+    mkEvalCheck "silly-allowed-paths" sillyAllowedPathsNode;
   deluge-web =
     let
       c = delugeWebNode.config;
